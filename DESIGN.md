@@ -20,8 +20,9 @@ This directory **is** the Draccus bundle. Physical storage may live anywhere; la
 | **Pinned rootfs** | `$DRACCUS_BUNDLE/rootfs` → `/` inside the namespace |
 | **Environment sources (VC)** | `envs/base-sys/spack.yaml`, `envs/base-ml/spack.yaml` (mirror under `/opt/draccus/envs` only after copy/bootstrap; authoritative copies live here in git) |
 | **Launchers** | `bin/draccus-run`, `bin/draccus-build`, `bin/draccus-offline`, `bin/draccus-shell`, `bin/draccus-probe` |
-| **Rootfs bootstrap** | `scripts/bootstrap-rootfs.sh` (debootstrap Debian bookworm by default) |
-| **Validation** | `scripts/validate-base-sys.sh`, `scripts/validate-base-ml.sh`, `scripts/validate-project-overlay.sh`, `scripts/validate_foundation.py`, `scripts/validate_uv_layering.sh` (Spack/uv layering) |
+| **Rootfs bootstrap** | `scripts/bootstrap-rootfs.sh` (Docker export of `nvidia/cuda:13.1.1-cudnn-devel-ubuntu24.04` by default; set `DRACCUS_ROOTFS_MODE=debootstrap` for legacy Debian bookworm path) |
+| **Validation** | `scripts/validate-static.sh` (Gate 0, GPU-free), `scripts/validate-all.sh` (14-gate full suite), and per-gate scripts: `scripts/validate-base-sys.sh`, `scripts/validate-base-ml.sh`, `scripts/validate-project-overlay.sh`, `scripts/validate_foundation.py`, `scripts/validate_uv_layering.sh` |
+| **Development enforcement** | `.pre-commit-config.yaml` (shellcheck + shfmt + ruff + Gate 0 on every commit), `CLAUDE.md` (persistent Claude Code session rules) |
 | **Bundle resolution helper** | `lib/draccus-env.sh` |
 
 On this checkout, the historical default path `<HOME>/draccus` matches the workspace; **you no longer need to hardcode it** in scripts—set `DRACCUS_BUNDLE` or rely on auto-detection.
@@ -179,7 +180,7 @@ Run with `RUN_HEAVY_INFERENCE=1` to include the heavy inference package tests. S
 ## 7. Bootstrap workflow (summary)
 
 1. **Directories:** `mkdir -p` for `state`, `cache`, `build`, etc. (launchers create needed dirs on each run).
-2. **Rootfs:** `./scripts/bootstrap-rootfs.sh` (requires `debootstrap`, sudo).
+2. **Rootfs:** `./scripts/bootstrap-rootfs.sh` — defaults to Docker mode (exports `nvidia/cuda:13.1.1-cudnn-devel-ubuntu24.04`; requires `docker` and `sudo`). Set `DRACCUS_ROOTFS_MODE=debootstrap` for a plain Debian bookworm rootfs (requires `debootstrap`).
 3. **Spack inside Draccus:**  
    `"$DRACCUS_BUNDLE/bin/draccus-build" bash -lc 'git clone https://github.com/spack/spack /opt/draccus/spack && ...'`  
    (Use a pinned Spack commit for production.)
@@ -193,17 +194,25 @@ Run with `RUN_HEAVY_INFERENCE=1` to include the heavy inference package tests. S
 
 ## 8. Validation gates
 
-Implementation scripts in this repo:
+Run the full suite with `scripts/validate-all.sh` (Gate 0 is always prepended).  
+Run Gate 0 alone (GPU-free, ~5 s): `scripts/validate-static.sh` or `mise run draccus-lint`.
 
-| Gate | Script / command |
-|------|------------------|
-| bwrap / rootfs | `bin/draccus-probe` |
-| base-sys | `scripts/validate-base-sys.sh` |
-| base-ml / torch / jax / ffmpeg | `scripts/validate-base-ml.sh` |
-| uv overlay + nvidia-* scanner + HARD_FAIL | `scripts/validate_uv_layering.sh` (and `validate-project-overlay.sh`) |
-| Python entry | `scripts/validate_foundation.py` (from mise or manual `draccus-run`) |
+| Gate | Script / command | GPU? |
+|------|------------------|------|
+| **Gate 0** | `scripts/validate-static.sh` — shellcheck, shfmt, ruff, Spack YAML structure, do-not-shadow consistency, rootfs stamp, launcher executability, bwrap probe | No |
+| **Gate 1** | `bin/draccus-probe` — namespace / rootfs / path contract | No |
+| **Gate 2** | Spack path canonicality + pinned revision (inside `draccus-build`) | No |
+| **Gate 3** | `scripts/validate-base-sys.sh` — base-sys tools present and functional | No |
+| **Gate 4** | base-ml concretization & pin verification (`py-torch@2.10.0`, `py-jaxlib@0.9.1`, `cuda@13.1.1`, `python@3.12`, `cuda_arch=100`) | No |
+| **Gate 5** | GPU device visibility on outer host (informational, non-fatal) | — |
+| **Gates 6–9** | `scripts/validate-base-ml.sh` — torch, jax, numpy, scipy, ffmpeg | Yes |
+| **Gate 10** | `scripts/validate-project-overlay.sh` — uv overlay contract | Yes |
+| **Gate 10b** | `scripts/validate_uv_layering.sh` — nvidia-* scanner + HARD_FAIL; `RUN_HEAVY_INFERENCE=1` for vllm/sglang/flash-attn | Yes |
+| **Gate 11** | CUDA extension ABI test, opt-in via `RUN_CUDA_EXT_TEST=1` | Yes |
+| **Gate 12** | mise task validation (if `mise.toml` present) | No |
+| **Gate 13** | Offline reproducibility (`DRACCUS_OFFLINE=1` imports) | Yes |
 
-Full gate list from the original EDD (snapshots, concretization greps, GPU checks, offline imports) remains the acceptance checklist; adapt paths to `"$DRACCUS_BUNDLE/bin/draccus-run"`.
+Standalone Python-only foundation check: `scripts/validate_foundation.py` (inside `draccus-run` with base-ml active).
 
 ---
 
@@ -234,7 +243,32 @@ Draccus is a **reproducibility and path-contract** layer, not a high-assurance s
 
 ---
 
-## 11. Acceptance criteria
+## 11. Development enforcement
+
+The repository is a **git repo** with pre-commit hooks wired to Gate 0. All hooks use locally-installed tools — no network access required at commit time.
+
+**Pre-commit hooks** (`.pre-commit-config.yaml`, `language: system`):
+
+| Hook | Tool | Files |
+|------|------|-------|
+| `shellcheck` | `shellcheck --severity=warning` | `bin/draccus-*`, `scripts/*.sh` |
+| `shfmt` | `shfmt -i 2 -ci -bn -d` | same |
+| `ruff` | lint + format check | `scripts/*.py` |
+| `yamllint` | `.yamllint.yml` config | `*.yaml`/`*.yml` (excl. `spack.yaml`) |
+| `draccus-validate-static` | `scripts/validate-static.sh` | always (every commit) |
+
+**Install once:**
+```bash
+uv tool install pre-commit shellcheck-py ruff yamllint
+# shfmt via OS package (apt/brew)
+pre-commit install   # wires hooks into .git/hooks/pre-commit
+```
+
+**`CLAUDE.md`** at the bundle root encodes the same invariants as persistent instructions for Claude Code sessions: mandatory Gate 0 after any edit, do-not-shadow list, two-layer model, canonical prefix contract, pinned versions.
+
+---
+
+## 12. Acceptance criteria
 
 - `draccus-probe` passes on a host where user namespaces / bwrap are permitted.
 - `base-sys` and `base-ml` install and validate per scripts above.
@@ -258,5 +292,10 @@ CPU target (`x86_64_v3` vs `icelake`), rootfs distro flavor, pinned Spack commit
 | Bundle resolution | `lib/draccus-env.sh` |
 | base-sys / base-ml specs | `envs/base-sys/spack.yaml`, `envs/base-ml/spack.yaml` |
 | Rootfs bootstrap | `scripts/bootstrap-rootfs.sh` |
-| Validation | `scripts/validate-base-sys.sh`, `validate-base-ml.sh`, `validate-project-overlay.sh`, `validate_foundation.py`, `validate_uv_layering.sh` |
+| Gate 0 static validation | `scripts/validate-static.sh` |
+| Full validation suite | `scripts/validate-all.sh` |
+| Validation (per gate) | `scripts/validate-base-sys.sh`, `scripts/validate-base-ml.sh`, `scripts/validate-project-overlay.sh`, `scripts/validate_foundation.py`, `scripts/validate_uv_layering.sh` |
+| Lockfile refresh | `scripts/refresh-spack-lockfiles.sh` |
 | GC / cleanup | `scripts/prune-draccus.sh` |
+| Development enforcement | `.pre-commit-config.yaml`, `.shellcheckrc`, `pyproject.toml` (ruff), `.yamllint.yml` |
+| Claude Code session rules | `CLAUDE.md` |
