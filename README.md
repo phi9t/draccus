@@ -20,7 +20,7 @@ flowchart TD
     B --> C[bwrap namespace]
     C --> D[pinned rootfs + /opt/draccus]
     D --> E[Spack base-ml view]
-    E --> F[uv project .venv on /work/src]
+    E --> F[uv project .venv on /workspace]
 ```
 
 Spack and uv never cross layers; validation (`validate_uv_layering.sh`) enforces it.
@@ -39,7 +39,7 @@ Draccus uses a strict two-layer Python model:
 ### Correct pattern
 
 ```bash
-DRACCUS_WORK_SRC="$PWD" "$DRACCUS_BUNDLE/bin/draccus-run" bash -lc '
+DRACCUS_WORKSPACE="$PWD" "$DRACCUS_BUNDLE/bin/draccus-run" bash -lc '
   . /opt/draccus/spack/share/spack/setup-env.sh
   spack env activate -p base-ml
   uv venv --python "$(which python)" --system-site-packages .venv
@@ -52,7 +52,7 @@ DRACCUS_WORK_SRC="$PWD" "$DRACCUS_BUNDLE/bin/draccus-run" bash -lc '
 
 - Always use `--system-site-packages` so the project venv can import the Spack-provided `torch`/`jax`/`numpy`.
 - **Never** run `uv pip install torch`, `uv pip install jax`, `uv pip install numpy`, etc. inside a project. Doing so creates a conflicting copy in `.venv` and breaks the foundation.
-- The validation scripts (`validate-project-overlay.sh` and `validate_foundation.py`) explicitly assert that foundation packages resolve from `/opt/draccus/view/base-ml`, not from `/work/src/.venv`.
+- The validation scripts (`validate-project-overlay.sh` and `validate_foundation.py`) explicitly assert that foundation packages resolve from `/opt/draccus/view/base-ml`, not from `/workspace/.venv`.
 
 ### Do-not-shadow list (enforced by validation)
 
@@ -127,7 +127,7 @@ DRACCUS_ROOTFS_FORCE=1 ./scripts/bootstrap-rootfs.sh
 ### 4. First project (uv overlay on top of Spack foundation)
 ```bash
 mkdir -p projects/my-experiment && cd projects/my-experiment
-DRACCUS_WORK_SRC="$PWD" ../bin/draccus-run bash -lc '
+DRACCUS_WORKSPACE="$PWD" ../bin/draccus-run bash -lc '
   . /opt/draccus/spack/share/spack/setup-env.sh
   spack env activate -p base-ml
   uv venv --python "$(which python)" --system-site-packages .venv
@@ -159,7 +159,7 @@ $DRACCUS_BUNDLE/
 └── projects/            # optional location for pinned experiments
 ```
 
-All paths inside the bwrap namespace are stable at `/opt/draccus/...` and `/work/src`.
+All paths inside the bwrap namespace are stable at `/opt/draccus/...` and `/workspace`.
 
 ## Common Commands
 

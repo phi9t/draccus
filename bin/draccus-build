@@ -7,7 +7,7 @@ DRACCUS_ROOTFS="${DRACCUS_ROOTFS:-$DRACCUS_BUNDLE/rootfs}"
 DRACCUS_STATE="${DRACCUS_STATE:-$DRACCUS_BUNDLE/state}"
 DRACCUS_CACHE="${DRACCUS_CACHE:-$DRACCUS_BUNDLE/cache}"
 DRACCUS_BUILD="${DRACCUS_BUILD:-$DRACCUS_BUNDLE/build}"
-DRACCUS_WORK_SRC="${DRACCUS_WORK_SRC:-$PWD}"
+DRACCUS_WORKSPACE="${DRACCUS_WORKSPACE:-$PWD}"
 
 # shellcheck source=../lib/draccus-bwrap-env.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/draccus-bwrap-env.sh"
@@ -87,7 +87,7 @@ exec "$BWRAP" \
   --bind "$DRACCUS_STATE/view" /opt/draccus/view \
   --bind "$DRACCUS_CACHE" /opt/draccus/cache \
   --bind "$DRACCUS_BUILD" /opt/draccus/build \
-  --bind "$DRACCUS_WORK_SRC" /work/src \
+  --bind "$DRACCUS_WORKSPACE" /workspace \
   --setenv DRACCUS_PREFIX /opt/draccus \
   --setenv SPACK_ROOT /opt/draccus/spack \
   --setenv SPACK_SYS_VIEW /opt/draccus/view/base-sys \
@@ -101,8 +101,9 @@ exec "$BWRAP" \
   --setenv CUDA_ROOT "$DRACCUS_RESOLVED_CUDA_ROOT" \
   --setenv TORCH_CUDA_ARCH_LIST "10.0" \
   --setenv PYTHONNOUSERSITE "1" \
-  --setenv HOME /work/src \
+  --setenv HOME /workspace \
+  --setenv DRACCUS_WORKSPACE /workspace \
   --setenv PATH "/opt/draccus/view/base-sys/bin:/opt/draccus/view/base-ml/bin:${DRACCUS_BWRAP_CUDA_BIN_PREFIX:-}/usr/local/nvidia/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
   --setenv LD_LIBRARY_PATH "/usr/local/nvidia/lib:/usr/local/nvidia/lib64${cuda_ld_extra}:/usr/local/cuda/lib:/opt/draccus/view/base-ml/lib:/opt/draccus/view/base-ml/lib64" \
-  --chdir /work/src \
+  --chdir /workspace \
   "$@"

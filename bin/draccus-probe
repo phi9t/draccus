@@ -34,7 +34,7 @@ if ! "$DRACCUS_RUN" bash -lc '
   test "$DRACCUS_PREFIX" = /opt/draccus
   test "$SPACK_ROOT" = /opt/draccus/spack
   test -d /opt/draccus
-  test -d /work/src
+  test -d /workspace
 '; then
   echo ""
   echo "ERROR: Failed to enter bwrap namespace."
