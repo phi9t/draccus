@@ -1,0 +1,102 @@
+# Root filesystem is exported from NVIDIA CUDA + cuDNN Ubuntu Docker (`DRACCUS_CUDA_DOCKER_IMAGE`; pin matches Spack cuda@13.1.x here).
+# Spack CUDA is pinned to @13.1.1 (latest 13.x in current builtin `cuda/package.py`). Use newer Spack + image tag when NVIDIA publishes matching packs.
+spack:
+  view:
+    default:
+      root: /opt/draccus/view/base-ml
+      link: all
+      link_type: symlink
+      link_dirs: true
+
+  config:
+    build_jobs: 32
+    install_tree:
+      root: /opt/draccus/spack/opt/spack
+      padded_length: 128
+    source_cache: /opt/draccus/cache/spack/source
+    misc_cache: /opt/draccus/cache/spack/misc
+    build_stage:
+    - /opt/draccus/build/stage
+
+  concretizer:
+    unify: true
+    reuse: true
+    targets:
+      granularity: microarchitectures
+      host_compatible: true
+    duplicates:
+      strategy: minimal
+      max_dupes:
+        default: 1
+        cmake: 2
+        gmake: 2
+        python: 2
+        py-pip: 2
+        py-setuptools: 2
+        py-wheel: 2
+        py-flit-core: 2
+        gcc: 2
+        llvm: 2
+
+  packages:
+    all:
+      target: [x86_64_v3]
+      require:
+      - "+shared"
+      - "%[when=%c]c=gcc@12.4.0 %[when=%cxx]cxx=gcc@12.4.0 %[when=%fortran]fortran=gcc@12.4.0"
+      providers:
+        blas: [intel-oneapi-mkl]
+        lapack: [intel-oneapi-mkl]
+        mpi: [openmpi]
+
+    cuda:
+      require:
+      - "@13.1.1"
+
+    py-torch:
+      require:
+      - "+cuda"
+      - "+cudnn"
+      - "+nccl"
+      - "+distributed"
+      - "cuda_arch=100"
+
+    py-jaxlib:
+      require:
+      - "+cuda"
+      - "+nccl"
+      - "cuda_arch=100"
+
+    nccl:
+      require:
+      - "+cuda"
+      - "cuda_arch=100"
+
+    magma:
+      require:
+      - "+cuda"
+      - "cuda_arch=100"
+
+  specs:
+  - python@3.12
+  - py-pip
+  - py-setuptools
+  - py-wheel
+  - py-numpy
+  - py-scipy
+
+  - cuda@13.1.1
+  - cudnn@9.17:
+  - nccl@2.29: +cuda cuda_arch=100 ^cuda@13.1.1
+  - cusparselt ^cuda@13.1.1
+  - magma +cuda cuda_arch=100 ^cuda@13.1.1
+
+  - intel-oneapi-mkl
+  - fftw +openmp
+  - eigen
+
+  - ffmpeg@7.1 +gpl +nonfree +libx264 +libx265 +libvpx +libaom +freetype +fontconfig +openssl
+
+  - py-torch@2.10.0 +cuda +cudnn +nccl +magma +distributed cuda_arch=100 ^python@3.12 ^cuda@13.1.1 ^cudnn@9.17: ^nccl@2.29:
+  - py-jax@0.9.1 ^python@3.12
+  - py-jaxlib@0.9.1 +cuda +nccl cuda_arch=100 ^python@3.12 ^cuda@13.1.1 ^nccl@2.29:

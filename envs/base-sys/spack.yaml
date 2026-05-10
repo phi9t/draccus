@@ -1,0 +1,57 @@
+spack:
+  view:
+    default:
+      root: /opt/draccus/view/base-sys
+      link: all
+      link_type: symlink
+      link_dirs: true
+
+  config:
+    build_jobs: 32
+    install_tree:
+      root: /opt/draccus/spack/opt/spack
+      padded_length: 128
+    source_cache: /opt/draccus/cache/spack/source
+    misc_cache: /opt/draccus/cache/spack/misc
+    build_stage:
+    - /opt/draccus/build/stage
+
+  concretizer:
+    unify: true
+    reuse: true
+    targets:
+      granularity: microarchitectures
+      host_compatible: true
+    duplicates:
+      strategy: minimal
+
+  packages:
+    all:
+      target: [x86_64_v3]
+      require:
+      - "+shared"
+      - "%[when=%c]c=gcc@12.4.0 %[when=%cxx]cxx=gcc@12.4.0 %[when=%fortran]fortran=gcc@12.4.0"
+
+  specs:
+  - gcc@12.4.0 languages='c,c++,fortran'
+  - llvm +clang +lld
+  - gdb
+  - cmake
+  - ninja
+  - meson
+  - pkgconf
+  - gmake
+  - patchelf
+  - ccache
+  - git
+  - git-lfs
+  - openssh
+  - zsh
+  - tmux
+  - emacs
+  - ripgrep
+  - eza
+  - dust
+  - fd
+  - jq
+  - cloc

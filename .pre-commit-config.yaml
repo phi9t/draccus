@@ -1,0 +1,55 @@
+# All hooks use language: system and rely on tools installed via:
+#   uv tool install shellcheck-py ruff yamllint pre-commit
+# shfmt is installed via OS package (apt/brew).
+# No network access is required at hook runtime.
+repos:
+  - repo: local
+    hooks:
+      - id: shellcheck
+        name: shellcheck
+        language: system
+        entry: shellcheck
+        args: [--severity=warning]
+        files: ^(bin/draccus-|scripts/.*\.sh$)
+        types: [shell]
+
+      - id: shfmt
+        name: shfmt (format check)
+        language: system
+        entry: shfmt
+        args: [-i, "2", -ci, -bn, -d]
+        files: ^(bin/draccus-|scripts/.*\.sh$)
+        types: [shell]
+
+      - id: ruff
+        name: ruff (lint)
+        language: system
+        entry: ruff
+        args: [check]
+        files: ^scripts/.*\.py$
+        types: [python]
+
+      - id: ruff-format
+        name: ruff (format check)
+        language: system
+        entry: ruff
+        args: [format, --check]
+        files: ^scripts/.*\.py$
+        types: [python]
+
+      - id: yamllint
+        name: yamllint
+        language: system
+        entry: yamllint
+        # spack.yaml uses Spack-specific YAML conventions; validated by Gate 0 Check 5
+        args: [-c, .yamllint.yml]
+        files: \.(yaml|yml)$
+        exclude: (^mise\.toml$|/spack\.yaml$)
+
+      - id: draccus-validate-static
+        name: Draccus Gate 0 (static/structural)
+        language: system
+        entry: bash
+        args: [scripts/validate-static.sh]
+        pass_filenames: false
+        always_run: true

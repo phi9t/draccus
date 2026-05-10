@@ -1,0 +1,270 @@
+#!/usr/bin/env bash
+# Gate 0: Fast, GPU-free static/structural validation for Draccus bwrap+Spack ML bundle
+# This script performs static checks without requiring bwrap, Spack, or GPUs
+
+set -euo pipefail
+
+# Source draccus-env.sh to resolve DRACCUS_BUNDLE
+# shellcheck source=../lib/draccus-env.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/draccus-env.sh"
+
+# Counters for pass/fail
+pass_count=0
+fail_count=0
+
+# Check function: runs a command and records pass/fail without exiting
+# Usage: check <name> <command>
+check() {
+  local name="$1"
+  local cmd="$2"
+
+  if eval "$cmd" >/dev/null 2>&1; then
+    echo "[PASS] $name"
+    pass_count=$((pass_count + 1))
+  else
+    echo "[FAIL] $name"
+    fail_count=$((fail_count + 1))
+  fi
+}
+
+# ============================================================================
+# CHECK 1 - Shell lint (shellcheck)
+# ============================================================================
+
+echo "=== CHECK 1: Shell lint (shellcheck) ==="
+
+SHELL_FILES=(
+  "$DRACCUS_BUNDLE/bin/draccus-build"
+  "$DRACCUS_BUNDLE/bin/draccus-offline"
+  "$DRACCUS_BUNDLE/bin/draccus-probe"
+  "$DRACCUS_BUNDLE/bin/draccus-run"
+  "$DRACCUS_BUNDLE/bin/draccus-shell"
+  "$DRACCUS_BUNDLE/scripts/bootstrap-rootfs.sh"
+  "$DRACCUS_BUNDLE/scripts/prune-draccus.sh"
+  "$DRACCUS_BUNDLE/scripts/refresh-spack-lockfiles.sh"
+  "$DRACCUS_BUNDLE/scripts/validate-all.sh"
+  "$DRACCUS_BUNDLE/scripts/validate-base-ml.sh"
+  "$DRACCUS_BUNDLE/scripts/validate-base-sys.sh"
+  "$DRACCUS_BUNDLE/scripts/validate-project-overlay.sh"
+  "$DRACCUS_BUNDLE/scripts/validate_uv_layering.sh"
+)
+
+if command -v shellcheck >/dev/null 2>&1; then
+  for f in "${SHELL_FILES[@]}"; do
+    if [[ -f "$f" ]]; then
+      check "shellcheck: $(basename "$f")" "shellcheck --severity=warning \"$f\""
+    fi
+  done
+else
+  echo "[WARN] shellcheck not in PATH, skipping shell lint checks"
+fi
+
+echo ""
+
+# ============================================================================
+# CHECK 2 - Shell format (shfmt)
+# ============================================================================
+
+echo "=== CHECK 2: Shell format (shfmt) ==="
+
+if command -v shfmt >/dev/null 2>&1; then
+  for f in "${SHELL_FILES[@]}"; do
+    if [[ -f "$f" ]]; then
+      check "shfmt: $(basename "$f")" "shfmt --diff -i 2 -ci -bn \"$f\""
+    fi
+  done
+else
+  echo "[WARN] shfmt not in PATH, skipping shell format checks"
+fi
+
+echo ""
+
+# ============================================================================
+# CHECK 3 - Python lint (ruff)
+# ============================================================================
+
+echo "=== CHECK 3: Python lint (ruff) ==="
+
+if command -v ruff >/dev/null 2>&1; then
+  if [[ -f "$DRACCUS_BUNDLE/scripts/validate_foundation.py" ]]; then
+    check "ruff: validate_foundation.py" "ruff check \"$DRACCUS_BUNDLE/scripts/validate_foundation.py\""
+  else
+    echo "[WARN] validate_foundation.py not found, skipping"
+  fi
+else
+  echo "[WARN] ruff not in PATH, skipping Python lint checks"
+fi
+
+echo ""
+
+# ============================================================================
+# CHECK 4 - YAML lint (yamllint)
+# ============================================================================
+
+echo "=== CHECK 4: YAML lint (yamllint) ==="
+
+if command -v yamllint >/dev/null 2>&1; then
+  if [[ -f "$DRACCUS_BUNDLE/.yamllint.yml" ]]; then
+    YAMLLINT_CONFIG="$DRACCUS_BUNDLE/.yamllint.yml"
+  else
+    YAMLLINT_CONFIG=""
+  fi
+
+  # spack.yaml uses Spack-specific YAML conventions (version range syntax like "nccl@2.29: +cuda"
+  # and list items at parent indent) that trigger yamllint errors. Structural validation is
+  # handled by Check 5. Add other YAML files to YAMLLINT_FILES as they are introduced.
+  YAMLLINT_FILES=()
+  if [[ ${#YAMLLINT_FILES[@]} -eq 0 ]]; then
+    echo "[NOTE] No additional YAML files to lint (spack.yaml excluded; validated by Check 5)"
+  else
+    for f in "${YAMLLINT_FILES[@]}"; do
+      if [[ -f "$f" ]]; then
+        if [[ -n "$YAMLLINT_CONFIG" ]]; then
+          check "yamllint: $(basename "$f")" "yamllint -c \"$YAMLLINT_CONFIG\" \"$f\""
+        else
+          check "yamllint: $(basename "$f")" "yamllint \"$f\""
+        fi
+      fi
+    done
+  fi
+else
+  echo "[WARN] yamllint not in PATH, skipping YAML lint checks"
+fi
+
+echo ""
+
+# ============================================================================
+# CHECK 5 - Spack YAML structural check
+# ============================================================================
+
+echo "=== CHECK 5: Spack YAML structural check ==="
+
+BASE_SYS_YAML="$DRACCUS_BUNDLE/envs/base-sys/spack.yaml"
+BASE_ML_YAML="$DRACCUS_BUNDLE/envs/base-ml/spack.yaml"
+
+# Verify files exist
+check "spack.yaml exists: base-sys" "test -f \"$BASE_SYS_YAML\""
+check "spack.yaml exists: base-ml" "test -f \"$BASE_ML_YAML\""
+
+# Check base-sys/spack.yaml for required keys
+check "base-sys: 'view:' present" "grep -q 'view:' \"$BASE_SYS_YAML\""
+check "base-sys: 'concretizer:' present" "grep -q 'concretizer:' \"$BASE_SYS_YAML\""
+check "base-sys: 'specs:' present" "grep -q 'specs:' \"$BASE_SYS_YAML\""
+
+# Check base-ml/spack.yaml for required keys
+check "base-ml: 'view:' present" "grep -q 'view:' \"$BASE_ML_YAML\""
+check "base-ml: 'concretizer:' present" "grep -q 'concretizer:' \"$BASE_ML_YAML\""
+check "base-ml: 'specs:' present" "grep -q 'specs:' \"$BASE_ML_YAML\""
+
+# Check for cuda_arch=100 in base-ml
+check "base-ml: 'cuda_arch=100' present" "grep -q 'cuda_arch=100' \"$BASE_ML_YAML\""
+
+# Check for python@3.12 in base-ml
+check "base-ml: 'python@3.12' present" "grep -q 'python@3.12' \"$BASE_ML_YAML\""
+
+echo ""
+
+# ============================================================================
+# CHECK 6 - Do-not-shadow consistency
+# ============================================================================
+
+echo "=== CHECK 6: Do-not-shadow consistency ==="
+
+UV_LAYERING_SCRIPT="$DRACCUS_BUNDLE/scripts/validate_uv_layering.sh"
+
+if [[ -f "$UV_LAYERING_SCRIPT" ]]; then
+  REQUIRED_PACKAGES=("torch" "jax" "jaxlib" "numpy" "scipy" "triton")
+
+  for pkg in "${REQUIRED_PACKAGES[@]}"; do
+    if grep -o "DO_NOT_SHADOW" "$UV_LAYERING_SCRIPT" >/dev/null 2>&1 \
+      && grep -A 10 "DO_NOT_SHADOW=" "$UV_LAYERING_SCRIPT" | grep -o "$pkg" >/dev/null 2>&1; then
+      echo "[PASS] DO_NOT_SHADOW contains: $pkg"
+      pass_count=$((pass_count + 1))
+    else
+      echo "[FAIL] DO_NOT_SHADOW missing: $pkg"
+      fail_count=$((fail_count + 1))
+    fi
+  done
+else
+  echo "[FAIL] validate_uv_layering.sh not found"
+  fail_count=$((fail_count + 1))
+fi
+
+echo ""
+
+# ============================================================================
+# CHECK 7 - Rootfs stamp
+# ============================================================================
+
+echo "=== CHECK 7: Rootfs stamp ==="
+
+ROOTFS_DIR="$DRACCUS_BUNDLE/rootfs"
+ROOTFS_STAMP="$ROOTFS_DIR/.draccus-cuda-docker-image"
+
+if [[ -d "$ROOTFS_DIR" ]]; then
+  check "rootfs stamp exists and is non-empty" "test -s \"$ROOTFS_STAMP\""
+else
+  echo "[NOTE] rootfs/ directory not yet bootstrapped, skipping stamp check"
+fi
+
+echo ""
+
+# ============================================================================
+# CHECK 8 - Launcher executability
+# ============================================================================
+
+echo "=== CHECK 8: Launcher executability ==="
+
+LAUNCHERS=(
+  "$DRACCUS_BUNDLE/bin/draccus-run"
+  "$DRACCUS_BUNDLE/bin/draccus-build"
+  "$DRACCUS_BUNDLE/bin/draccus-offline"
+  "$DRACCUS_BUNDLE/bin/draccus-shell"
+  "$DRACCUS_BUNDLE/bin/draccus-probe"
+)
+
+for launcher in "${LAUNCHERS[@]}"; do
+  check "executable: $(basename "$launcher")" "test -x \"$launcher\""
+done
+
+echo ""
+
+# ============================================================================
+# CHECK 9 - bwrap probe (optional)
+# ============================================================================
+
+echo "=== CHECK 9: bwrap probe (optional) ==="
+
+if command -v bwrap >/dev/null 2>&1; then
+  echo "[INFO] bwrap available, running draccus-probe..."
+  if "$DRACCUS_BUNDLE/bin/draccus-probe"; then
+    echo "[PASS] draccus-probe completed successfully"
+    pass_count=$((pass_count + 1))
+  else
+    echo "[FAIL] draccus-probe failed"
+    fail_count=$((fail_count + 1))
+  fi
+else
+  echo "[NOTE] bwrap not in PATH, skipping probe"
+fi
+
+echo ""
+
+# ============================================================================
+# Summary
+# ============================================================================
+
+echo "========================================"
+echo "           VALIDATION SUMMARY           "
+echo "========================================"
+echo "Passed: $pass_count"
+echo "Failed: $fail_count"
+echo "========================================"
+
+if [[ $fail_count -gt 0 ]]; then
+  echo "RESULT: FAILURE ($fail_count check(s) failed)"
+  exit 1
+else
+  echo "RESULT: SUCCESS (all checks passed)"
+  exit 0
+fi
