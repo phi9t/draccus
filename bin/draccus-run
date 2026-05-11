@@ -17,6 +17,13 @@ if [[ -n "${DRACCUS_BWRAP_CUDA_LD_EXTRA:-}" ]]; then
   cuda_ld_extra=":${DRACCUS_BWRAP_CUDA_LD_EXTRA%:}"
 fi
 
+# UV layering enforcement (UV_EXTRA_OVERRIDES)
+uv_overrides_args=()
+if [[ -f "$DRACCUS_BUNDLE/scripts/uv_overrides.txt" ]]; then
+  uv_overrides_args+=(--ro-bind "$DRACCUS_BUNDLE/scripts/uv_overrides.txt" /opt/draccus/uv_overrides.txt)
+  uv_overrides_args+=(--setenv UV_EXTRA_OVERRIDES /opt/draccus/uv_overrides.txt)
+fi
+
 BWRAP="${BWRAP:-$(command -v bwrap || true)}"
 
 if [[ -z "$BWRAP" || ! -x "$BWRAP" ]]; then
@@ -31,12 +38,17 @@ fi
 
 mkdir -p \
   "$DRACCUS_STATE/spack" \
-  "$DRACCUS_STATE/view/base-sys" \
-  "$DRACCUS_STATE/view/base-ml" \
+  "$DRACCUS_STATE/view" \
+  "$DRACCUS_STATE/var-intel" \
   "$DRACCUS_CACHE/spack" \
   "$DRACCUS_CACHE/uv" \
   "$DRACCUS_CACHE/huggingface" \
   "$DRACCUS_BUILD/stage"
+
+# shellcheck source=../lib/draccus-view-dir.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/draccus-view-dir.sh"
+draccus_ensure_state_view_slot base-sys
+draccus_ensure_state_view_slot base-ml
 
 mkdir -p "$DRACCUS_BUNDLE/envs/base-sys" "$DRACCUS_BUNDLE/envs/base-ml"
 
@@ -65,6 +77,9 @@ if [[ "${DRACCUS_OFFLINE:-0}" != "1" ]]; then
   fi
 fi
 
+# Writable /opt (tmpfs): Intel oneAPI prerequisites probe writability under /opt.
+# Writable /var (tmpfs) + state-backed /var/intel: oneAPI packagemanager uses /var/intel/installercache; the NVIDIA
+# rootfs image makes the real /var subtree read-only inside the ro-bind.
 exec "$BWRAP" \
   --die-with-parent \
   --unshare-user \
@@ -75,6 +90,10 @@ exec "$BWRAP" \
   --unshare-uts \
   "${net_args[@]}" \
   --ro-bind "$DRACCUS_ROOTFS" / \
+  --tmpfs /opt \
+  --ro-bind-try "$DRACCUS_ROOTFS/opt/nvidia" /opt/nvidia \
+  --tmpfs /var \
+  --bind "$DRACCUS_STATE/var-intel" /var/intel \
   --proc /proc \
   --dev /dev \
   --ro-bind-try /sys /sys \
@@ -89,6 +108,7 @@ exec "$BWRAP" \
   --bind "$DRACCUS_CACHE" /opt/draccus/cache \
   --bind "$DRACCUS_BUILD" /opt/draccus/build \
   --bind "$DRACCUS_WORKSPACE" /workspace \
+  "${uv_overrides_args[@]}" \
   --setenv DRACCUS_PREFIX /opt/draccus \
   --setenv SPACK_ROOT /opt/draccus/spack \
   --setenv SPACK_SYS_VIEW /opt/draccus/view/base-sys \

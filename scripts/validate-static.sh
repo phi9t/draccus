@@ -37,8 +37,10 @@ SHELL_FILES=(
   "$DRACCUS_BUNDLE/bin/draccus-build"
   "$DRACCUS_BUNDLE/bin/draccus-offline"
   "$DRACCUS_BUNDLE/bin/draccus-probe"
+  "$DRACCUS_BUNDLE/bin/draccus-project-init"
   "$DRACCUS_BUNDLE/bin/draccus-run"
   "$DRACCUS_BUNDLE/bin/draccus-shell"
+  "$DRACCUS_BUNDLE/lib/draccus-project.sh"
   "$DRACCUS_BUNDLE/scripts/bootstrap-rootfs.sh"
   "$DRACCUS_BUNDLE/scripts/prune-draccus.sh"
   "$DRACCUS_BUNDLE/scripts/refresh-spack-lockfiles.sh"
@@ -219,6 +221,7 @@ LAUNCHERS=(
   "$DRACCUS_BUNDLE/bin/draccus-run"
   "$DRACCUS_BUNDLE/bin/draccus-build"
   "$DRACCUS_BUNDLE/bin/draccus-offline"
+  "$DRACCUS_BUNDLE/bin/draccus-project-init"
   "$DRACCUS_BUNDLE/bin/draccus-shell"
   "$DRACCUS_BUNDLE/bin/draccus-probe"
 )

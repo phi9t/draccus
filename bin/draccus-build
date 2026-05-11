@@ -31,12 +31,17 @@ fi
 
 mkdir -p \
   "$DRACCUS_STATE/spack" \
-  "$DRACCUS_STATE/view/base-sys" \
-  "$DRACCUS_STATE/view/base-ml" \
+  "$DRACCUS_STATE/view" \
+  "$DRACCUS_STATE/var-intel" \
   "$DRACCUS_CACHE/spack" \
   "$DRACCUS_CACHE/uv" \
   "$DRACCUS_CACHE/huggingface" \
   "$DRACCUS_BUILD/stage"
+
+# shellcheck source=../lib/draccus-view-dir.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/draccus-view-dir.sh"
+draccus_ensure_state_view_slot base-sys
+draccus_ensure_state_view_slot base-ml
 
 mkdir -p "$DRACCUS_BUNDLE/envs/base-sys" "$DRACCUS_BUNDLE/envs/base-ml"
 
@@ -64,6 +69,7 @@ if [[ "${DRACCUS_OFFLINE:-0}" != "1" ]]; then
   fi
 fi
 
+# Writable /opt + /var: Intel oneAPI (see draccus-run).
 exec "$BWRAP" \
   --die-with-parent \
   --unshare-user \
@@ -74,6 +80,10 @@ exec "$BWRAP" \
   --unshare-uts \
   "${net_args[@]}" \
   --ro-bind "$DRACCUS_ROOTFS" / \
+  --tmpfs /opt \
+  --ro-bind-try "$DRACCUS_ROOTFS/opt/nvidia" /opt/nvidia \
+  --tmpfs /var \
+  --bind "$DRACCUS_STATE/var-intel" /var/intel \
   --proc /proc \
   --dev /dev \
   --ro-bind-try /sys /sys \

@@ -10,7 +10,7 @@ repos:
         language: system
         entry: shellcheck
         args: [--severity=warning]
-        files: ^(bin/draccus-|scripts/.*\.sh$)
+        files: ^(bin/draccus-|lib/draccus-.*\.sh$|scripts/.*\.sh$)
         types: [shell]
 
       - id: shfmt
@@ -18,7 +18,7 @@ repos:
         language: system
         entry: shfmt
         args: [-i, "2", -ci, -bn, -d]
-        files: ^(bin/draccus-|scripts/.*\.sh$)
+        files: ^(bin/draccus-|lib/draccus-.*\.sh$|scripts/.*\.sh$)
         types: [shell]
 
       - id: ruff

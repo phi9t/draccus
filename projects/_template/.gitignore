@@ -1,0 +1,14 @@
+# Virtual environment — never commit, always recreate via draccus-project-init
+.venv/
+
+# uv.lock is intentionally NOT listed here — it must be committed (workstream policy)
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# pytest cache
+.pytest_cache/

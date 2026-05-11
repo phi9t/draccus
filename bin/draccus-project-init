@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# draccus-project-init <name>
+# Initialize a new uv-overlay project from the _template skeleton.
+set -euo pipefail
+
+# shellcheck source=../lib/draccus-env.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/draccus-env.sh"
+# shellcheck source=../lib/draccus-project.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/draccus-project.sh"
+
+usage() {
+  echo "Usage: draccus-project-init <name>" >&2
+  echo "  <name>  lowercase alphanumeric + hyphens only (e.g. my-finetune)" >&2
+  exit 1
+}
+
+[[ $# -eq 1 ]] || usage
+name="$1"
+
+# Validate name format: must start with a letter or digit; only [a-z0-9-] allowed.
+if ! [[ "$name" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+  echo "draccus-project-init: error: name must be lowercase alphanumeric + hyphens: '$name'" >&2
+  exit 1
+fi
+
+# Refuse names that start with "nvidia-" (DO_NOT_SHADOW prefix family).
+if [[ "$name" == nvidia-* ]]; then
+  echo "draccus-project-init: error: project names starting with 'nvidia-' are forbidden" >&2
+  exit 1
+fi
+
+# Parse DO_NOT_SHADOW from the single source of truth — do not duplicate the list here.
+layering_script="$DRACCUS_BUNDLE/scripts/validate_uv_layering.sh"
+if [[ ! -f "$layering_script" ]]; then
+  echo "draccus-project-init: error: cannot find $layering_script" >&2
+  exit 1
+fi
+
+mapfile -t _DO_NOT_SHADOW < <(
+  awk '
+    /^readonly -a DO_NOT_SHADOW=\(/ { flag=1; next }
+    flag && /^\)/ { exit }
+    flag {
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "")
+      gsub(/"/, "")
+      if (length > 0) print
+    }
+  ' "$layering_script"
+)
+
+for pkg in "${_DO_NOT_SHADOW[@]}"; do
+  if [[ "$name" == "$pkg" ]]; then
+    echo "draccus-project-init: error: '$name' is in the DO_NOT_SHADOW list (managed by Spack, not uv)" >&2
+    exit 1
+  fi
+done
+
+# Refuse if the project already exists.
+project_dir="$DRACCUS_BUNDLE/projects/$name"
+if [[ -d "$project_dir" ]]; then
+  echo "draccus-project-init: error: project '$name' already exists at $project_dir" >&2
+  exit 1
+fi
+
+echo "==> Initializing project '$name' ..."
+
+# Copy template skeleton.
+cp -r "$DRACCUS_BUNDLE/projects/_template" "$project_dir"
+
+# Replace the placeholder name in pyproject.toml.
+sed -i "s/REPLACE_ME/$name/" "$project_dir/pyproject.toml"
+
+echo "==> Entering bwrap to detect Python version, create venv, and lock ..."
+
+# Run inside bwrap with the project dir mounted at /workspace.
+# The canonical uv venv args (see draccus_project_uv_venv_args) are inlined here
+# because $(which python) must expand inside the namespace where Spack python is active.
+DRACCUS_WORKSPACE="$project_dir" "$DRACCUS_BUNDLE/bin/draccus-run" bash -lc '
+    set -euo pipefail
+    . /opt/draccus/spack/share/spack/setup-env.sh
+    spack env activate -p base-ml 2>/dev/null || true
+
+    py_ver=$(python -c "import sys; print(f\"{sys.version_info.major}.{sys.version_info.minor}\")")
+    echo "  Detected Python $py_ver from base-ml"
+
+    # Write .python-version (overwrite the comment-only placeholder).
+    printf "%s\n" "$py_ver" >/workspace/.python-version
+
+    # Update requires-python in pyproject.toml.
+    sed -i "s/requires-python = .*/requires-python = \">=$py_ver\"/" /workspace/pyproject.toml
+
+    # Create venv — canonical invocation (source of truth: draccus_project_uv_venv_args).
+    uv venv --python "$(which python)" --system-site-packages /workspace/.venv
+
+    # Generate lockfile.
+    cd /workspace && uv lock
+  '
+
+echo ""
+echo "Project '$name' initialized at:"
+echo "  $project_dir"
+echo ""
+echo "Next steps:"
+echo "  cd $project_dir"
+echo "  # Edit pyproject.toml to add dependencies, then:"
+echo "  ../../bin/draccus-run uv add <package>"
+echo "  ../../bin/draccus-run uv sync --frozen"
+echo "  ../../bin/draccus-run python -c 'import torch; print(torch.__version__)'"
