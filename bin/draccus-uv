@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# Thin wrapper so users can run "draccus-uv pip install ..." (or "draccus-uv ...")
+# and automatically get UV_EXTRA_OVERRIDES + the full Draccus namespace contract.
+UV_BIN="$(command -v uv || true)"
+if [[ -z "${UV_BIN}" || ! -x "${UV_BIN}" ]]; then
+  echo "draccus-uv: uv not found on host PATH (install from https://docs.astral.sh/uv/)" >&2
+  exit 127
+fi
+export DRACCUS_HOST_UV_BIN="$UV_BIN"
+exec "$(dirname "$0")/draccus-run" uv "$@"

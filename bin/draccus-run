@@ -77,6 +77,30 @@ if [[ "${DRACCUS_OFFLINE:-0}" != "1" ]]; then
   fi
 fi
 
+# Optional host `uv` tool (outside the NVIDIA rootfs). When DRACCUS_HOST_UV_BIN points to an
+# executable on the host, we mount only that binary on a tiny tmpfs (avoids binding all of /usr/local/bin).
+host_uv_bwrap_args=()
+host_uv_path_prefix=""
+if [[ -n "${DRACCUS_HOST_UV_BIN:-}" ]]; then
+  if [[ ! -x "${DRACCUS_HOST_UV_BIN}" ]]; then
+    echo "draccus-run: DRACCUS_HOST_UV_BIN=${DRACCUS_HOST_UV_BIN} is not executable" >&2
+    exit 127
+  fi
+  uv_host_real="$(readlink -f "${DRACCUS_HOST_UV_BIN}")"
+  host_uv_bwrap_args=(
+    --ro-bind "${uv_host_real}" /tmp/uv
+  )
+  host_uv_path_prefix="/tmp:"
+fi
+
+# Host-only: default PATH lists base-ml before base-sys (Torch/JAX foundation `python`).
+# For infra/debug (base-sys ahead of base-ml), set DRACCUS_PREFER_SYS_PATH=1 on the host or use
+# bin/draccus-debug-shell.
+draccus_path_views="${host_uv_path_prefix}/opt/draccus/view/base-ml/bin:/opt/draccus/view/base-sys/bin"
+if [[ "${DRACCUS_PREFER_SYS_PATH:-0}" =~ ^(1|true|yes)$ ]]; then
+  draccus_path_views="${host_uv_path_prefix}/opt/draccus/view/base-sys/bin:/opt/draccus/view/base-ml/bin"
+fi
+
 # Writable /opt (tmpfs): Intel oneAPI prerequisites probe writability under /opt.
 # Writable /var (tmpfs) + state-backed /var/intel: oneAPI packagemanager uses /var/intel/installercache; the NVIDIA
 # rootfs image makes the real /var subtree read-only inside the ro-bind.
@@ -102,6 +126,7 @@ exec "$BWRAP" \
   "${gpu_args[@]}" \
   "${driver_args[@]}" \
   "${net_overlay_args[@]}" \
+  "${host_uv_bwrap_args[@]}" \
   --ro-bind "$DRACCUS_BUNDLE/envs" /opt/draccus/envs \
   --ro-bind "$DRACCUS_STATE/spack" /opt/draccus/spack \
   --ro-bind "$DRACCUS_STATE/view" /opt/draccus/view \
@@ -124,7 +149,7 @@ exec "$BWRAP" \
   --setenv PYTHONNOUSERSITE "1" \
   --setenv HOME /workspace \
   --setenv DRACCUS_WORKSPACE /workspace \
-  --setenv PATH "/opt/draccus/view/base-sys/bin:/opt/draccus/view/base-ml/bin:${DRACCUS_BWRAP_CUDA_BIN_PREFIX:-}/usr/local/nvidia/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
-  --setenv LD_LIBRARY_PATH "/usr/local/nvidia/lib:/usr/local/nvidia/lib64${cuda_ld_extra}:/usr/local/cuda/lib:/opt/draccus/view/base-ml/lib:/opt/draccus/view/base-ml/lib64" \
+  --setenv PATH "${draccus_path_views}:${DRACCUS_BWRAP_CUDA_BIN_PREFIX:-}/usr/local/nvidia/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+  --setenv LD_LIBRARY_PATH "/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/cuda/lib64:/usr/local/cuda/lib${cuda_ld_extra}:/opt/draccus/view/base-ml/lib:/opt/draccus/view/base-ml/lib64" \
   --chdir /workspace \
   "$@"

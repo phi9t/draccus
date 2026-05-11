@@ -6,29 +6,18 @@ TORCH_CUDA_ARCH_LIST = "10.0"
 PYTHONNOUSERSITE = "1"
 
 [tasks.draccus-shell]
-run = '''
-/data02/home/philip.yang/draccus/bin/draccus-run bash -lc '
-  . /opt/draccus/spack/share/spack/setup-env.sh
-  spack env activate -p base-ml
-  source .venv/bin/activate 2>/dev/null || true
-  exec bash
-'
-'''
+run = "$DRACCUS_BUNDLE/bin/draccus-shell"
 
 [tasks.draccus-venv]
 run = '''
-/data02/home/philip.yang/draccus/bin/draccus-run bash -lc '
-  . /opt/draccus/spack/share/spack/setup-env.sh
-  spack env activate -p base-ml
+"$DRACCUS_BUNDLE/bin/draccus-run" bash -lc '
   uv venv --python "$(which python)" --system-site-packages .venv
 '
 '''
 
 [tasks.draccus-validate]
 run = '''
-/data02/home/philip.yang/draccus/bin/draccus-run bash -lc '
-  . /opt/draccus/spack/share/spack/setup-env.sh
-  spack env activate -p base-ml
+"$DRACCUS_BUNDLE/bin/draccus-run" bash -lc '
   source .venv/bin/activate 2>/dev/null || true
   python scripts/validate_foundation.py
 '

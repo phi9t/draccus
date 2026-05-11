@@ -40,6 +40,8 @@ SHELL_FILES=(
   "$DRACCUS_BUNDLE/bin/draccus-project-init"
   "$DRACCUS_BUNDLE/bin/draccus-run"
   "$DRACCUS_BUNDLE/bin/draccus-shell"
+  "$DRACCUS_BUNDLE/bin/draccus-debug-shell"
+  "$DRACCUS_BUNDLE/bin/draccus-uv"
   "$DRACCUS_BUNDLE/lib/draccus-project.sh"
   "$DRACCUS_BUNDLE/scripts/bootstrap-rootfs.sh"
   "$DRACCUS_BUNDLE/scripts/prune-draccus.sh"
@@ -49,6 +51,7 @@ SHELL_FILES=(
   "$DRACCUS_BUNDLE/scripts/validate-base-sys.sh"
   "$DRACCUS_BUNDLE/scripts/validate-project-overlay.sh"
   "$DRACCUS_BUNDLE/scripts/validate_uv_layering.sh"
+  "$DRACCUS_BUNDLE/scripts/coco-probe-models.sh"
 )
 
 if command -v shellcheck >/dev/null 2>&1; then
@@ -158,6 +161,10 @@ check "base-ml: 'view:' present" "grep -q 'view:' \"$BASE_ML_YAML\""
 check "base-ml: 'concretizer:' present" "grep -q 'concretizer:' \"$BASE_ML_YAML\""
 check "base-ml: 'specs:' present" "grep -q 'specs:' \"$BASE_ML_YAML\""
 
+# Enforce unified concretization graph (workspace policy; avoids duplicate-version solver churn).
+check "base-sys: concretizer unify: true" "grep -qE '^[[:space:]]*unify:[[:space:]]*true[[:space:]]*$' \"$BASE_SYS_YAML\""
+check "base-ml: concretizer unify: true" "grep -qE '^[[:space:]]*unify:[[:space:]]*true[[:space:]]*$' \"$BASE_ML_YAML\""
+
 # Check for cuda_arch=100 in base-ml
 check "base-ml: 'cuda_arch=100' present" "grep -q 'cuda_arch=100' \"$BASE_ML_YAML\""
 
@@ -223,7 +230,9 @@ LAUNCHERS=(
   "$DRACCUS_BUNDLE/bin/draccus-offline"
   "$DRACCUS_BUNDLE/bin/draccus-project-init"
   "$DRACCUS_BUNDLE/bin/draccus-shell"
+  "$DRACCUS_BUNDLE/bin/draccus-debug-shell"
   "$DRACCUS_BUNDLE/bin/draccus-probe"
+  "$DRACCUS_BUNDLE/bin/draccus-uv"
 )
 
 for launcher in "${LAUNCHERS[@]}"; do

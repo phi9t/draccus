@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export DRACCUS_PREFER_SYS_PATH=1
+exec "$(dirname "$0")/draccus-run" bash "$@"
