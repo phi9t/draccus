@@ -1,0 +1,436 @@
+#+TITLE: uv Overlay — Task Tracker
+#+AUTHOR: draccus
+#+STARTUP: overview logdone
+#+TODO: TODO(t) IN-PROGRESS(i!) BLOCKED(b@/!) | DONE(d!) WONTFIX(w@/!)
+#+PROPERTY: header-args :eval no
+#+FILETAGS: :workstream:uv-overlay:
+
+* Overview
+This tracker drives the work described in [[file:design.md][design.md]].
+Read design.md §6 (invariants) and §9 (handoff protocol) before claiming a task.
+
+Convention:
+- Each task has :OWNER:, :STARTED:, :FINISHED:, :DEPENDS: properties.
+- Append command output as nested =** Log= subheading or in a =:LOGBOOK:= drawer.
+- Never install torch/jax/numpy/scipy/triton/nvidia-* via uv (AGENTS.md §1, §2).
+
+* Decisions
+Record decisions here BEFORE starting Phase 2. Block downstream tasks until filled.
+
+** Project root convention
+   :PROPERTIES:
+   :DECIDED_BY:
+   :DECIDED_ON:
+   :END:
+   - Choice: (fill in — expected: =projects/<name>/= at repo root; =!projects/_template/= un-ignored)
+   - Un-ignore pattern added to .gitignore:
+
+** .python-version source
+   :PROPERTIES:
+   :DECIDED_BY:
+   :DECIDED_ON:
+   :END:
+   - Choice: (fill in — expected: live =python -V= inside draccus-run at init time)
+   - Rationale:
+
+** Cache strategy
+   :PROPERTIES:
+   :DECIDED_BY:
+   :DECIDED_ON:
+   :END:
+   - Choice: (fill in — expected: option A — shared =/opt/draccus/cache/uv= with =--link-mode=copy=)
+   - Fallback (option B): per-project cache if contention observed.
+
+** Lockfile flow
+   :PROPERTIES:
+   :DECIDED_BY:
+   :DECIDED_ON:
+   :END:
+   - Choice: (fill in — expected: =uv lock= inside draccus-run, commit =uv.lock=; =uv sync --frozen= in automation)
+   - Rationale:
+
+* Phase 0 — Preflight & decisions :phase0:
+** TODO P0.1 Verify host prerequisites
+   :PROPERTIES:
+   :ID:       P0.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:
+   :END:
+   DoD: every row in design.md §3 verified; outputs pasted under =** Log=.
+   Estimated time: ~10 min.
+   Commands:
+   #+begin_src bash
+   ./bin/draccus-probe                                        # Gate 1: namespace + prefix OK
+   ./bin/draccus-run state/view/base-ml/bin/python -V        # expect Python 3.12.x (Gate 4)
+   ./bin/draccus-run which uv                                 # uv binary inside namespace
+   ./scripts/validate-static.sh                               # Gate 0: shellcheck, shfmt, ruff, yamllint
+   pre-commit --version && ls .git/hooks/pre-commit           # hooks installed
+   #+end_src
+   Failure modes:
+   - draccus-probe fails → namespace or prefix broken; do NOT proceed; escalate.
+   - base-ml view absent → spack-envs-bootstrap workstream is a prerequisite; stop.
+   - uv not found inside draccus-run → uv needs to be made available on the bwrap PATH; file a blocker.
+   - Gate 0 fails → STOP. Fix the pre-existing breakage before any further work.
+
+** TODO P0.2 Record decisions
+   :PROPERTIES:
+   :ID:       P0.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P0.1
+   :END:
+   DoD: all four subsections under =* Decisions= filled in. User sign-off required (design.md §5).
+   Estimated time: ~5 min.
+   Sub-steps:
+   1. Project root: confirm =projects/= is gitignored, carve out =!projects/_template/=. Record pattern.
+   2. Python version: run =./bin/draccus-run python -V= and paste the exact string. Confirm it matches =python@3.12=.
+   3. Cache: confirm =UV_CACHE_DIR=/opt/draccus/cache/uv= is set in =bin/draccus-run=; choose link-mode=copy.
+   4. Lockfile flow: confirm =uv lock= + commit + =uv sync --frozen= pattern.
+   Failure modes:
+   - Leaving any field blank → P1.1 will block. Do not start Phase 1 with placeholders.
+
+** TODO P0.3 Create artifacts dir
+   :PROPERTIES:
+   :ID:       P0.3
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P0.1
+   :END:
+   DoD: =.workstream/uv-overlay/artifacts/= exists and =.gitkeep= is tracked.
+   Estimated time: ~10 sec.
+   #+begin_src bash
+   mkdir -p .workstream/uv-overlay/artifacts
+   touch .workstream/uv-overlay/artifacts/.gitkeep
+   git add .workstream/uv-overlay/artifacts/.gitkeep
+   #+end_src
+   Note: =artifacts/= is intentionally NOT blanket-gitignored at the workstream level — small logs and =uv.lock= copies should be committed; large logs (>1 MB) go in =artifacts/= but stay untracked. Use =git status= to confirm before commit.
+
+* Phase 1 — Project shape & template :phase1:
+** TODO P1.1 Author projects/_template/ scaffold
+   :PROPERTIES:
+   :ID:       P1.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P0.2
+   :END:
+   DoD: the four files below exist and pass =./scripts/validate-static.sh=:
+   - =projects/_template/pyproject.toml= — minimal PEP 517 project; no torch/jax/numpy/scipy in =dependencies=.
+   - =projects/_template/.python-version= — pinned to the live Python version from =* Decisions=.
+   - =projects/_template/.gitignore= — ignores =.venv/=, =__pycache__/=, =*.pyc=, =dist/=.
+   - =projects/_template/README.md= — one-paragraph usage note referencing =bin/draccus-project-init=.
+   Estimated time: ~15 min.
+   #+begin_src bash
+   mkdir -p projects/_template
+   # Author files per DoD above, then:
+   ./scripts/validate-static.sh
+   #+end_src
+   Failure modes:
+   - pyproject.toml lists a DO_NOT_SHADOW package in =dependencies= → remove; never add torch/jax/numpy/scipy here.
+   - validate-static.sh flags yamllint or ruff issues → fix before declaring DONE.
+
+** TODO P1.2 Carve !projects/_template/ out of root .gitignore
+   :PROPERTIES:
+   :ID:       P1.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P1.1
+   :END:
+   DoD: =git check-ignore -v projects/_template/pyproject.toml= produces NO output (file is NOT ignored).
+   Estimated time: ~5 min.
+   #+begin_src bash
+   # Append to .gitignore immediately after the projects/ rule:
+   #   !projects/_template/
+   git check-ignore -v projects/_template/pyproject.toml && echo "FAIL: still ignored" || echo "OK: not ignored"
+   git add projects/_template/
+   git status
+   #+end_src
+   Failure modes:
+   - Pattern order wrong (negation before =projects/= line) → gitignore negations only override preceding rules; ensure the =!projects/_template/= line follows the =projects/= line.
+   - Gate 0 (shellcheck) catches accidental trailing whitespace in .gitignore → fix the edit.
+
+** TODO P1.3 Add lib/draccus-project.sh with helper functions
+   :PROPERTIES:
+   :ID:       P1.3
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P1.1
+   :END:
+   DoD: =lib/draccus-project.sh= exists, is shellcheck-clean, exports four functions:
+   - =draccus_project_root <name>= — echoes =projects/<name>=.
+   - =draccus_project_venv_path <name>= — echoes =projects/<name>/.venv=.
+   - =draccus_project_assert_inside= — aborts if not running inside draccus-run namespace (checks =$DRACCUS_PREFIX=).
+   - =draccus_project_uv_venv_args= — echoes the canonical =--python $(which python) --system-site-packages= flags.
+   Then run =./scripts/validate-static.sh=.
+   Estimated time: ~20 min.
+   Failure modes:
+   - Hardcoded =python3.12= literal instead of =$(which python)= → violates the live-version invariant; use the function.
+   - Functions leak host paths → run =grep -r /data02 lib/draccus-project.sh= after authoring; must be empty.
+
+* Phase 2 — bin/draccus-project-init :phase2:
+** TODO P2.1 Implement bin/draccus-project-init
+   :PROPERTIES:
+   :ID:       P2.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P1.3
+   :END:
+   DoD: the script, executed via =bin/draccus-run=:
+   1. Refuses if not called inside a valid Draccus bundle (=DRACCUS_PREFIX= unset or missing).
+   2. Refuses if =<name>= matches any entry in the DO_NOT_SHADOW array (read from =scripts/validate_uv_layering.sh=).
+   3. Refuses if =projects/<name>= already exists.
+   4. Copies =projects/_template/= to =projects/<name>/=.
+   5. Rewrites =projects/<name>/.python-version= with the live =python -V= output.
+   6. Runs =uv venv --python "$(which python)" --system-site-packages projects/<name>/.venv=.
+   7. Exits 0; prints next-step instructions.
+   Then run =./scripts/validate-static.sh=.
+   Estimated time: ~45 min.
+   #+begin_src bash
+   # After authoring bin/draccus-project-init:
+   shellcheck bin/draccus-project-init
+   ./scripts/validate-static.sh
+   #+end_src
+   Failure modes:
+   - Script invokes =uv pip install torch= anywhere → immediate blocker; remove.
+   - Name-shadowing guard reads DO_NOT_SHADOW from a hardcoded list instead of the authoritative array → parse the source file instead.
+   - Script uses absolute host paths → violates canonical prefix invariant; use =${DRACCUS_PREFIX}= throughout.
+
+** TODO P2.2 Smoke test draccus-project-init
+   :PROPERTIES:
+   :ID:       P2.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P2.1
+   :END:
+   DoD: the demo project creates cleanly and the venv Python resolves.
+   Estimated time: ~5 min.
+   #+begin_src bash
+   ./bin/draccus-project-init demo
+   ls projects/demo/.venv/bin/python
+   ./bin/draccus-run projects/demo/.venv/bin/python -c 'import torch; print(torch.__file__)'
+   # torch.__file__ must resolve under /opt/draccus/view/base-ml, NOT .venv/
+   rm -rf projects/demo
+   #+end_src
+   Failure modes:
+   - =torch.__file__= resolves inside =.venv/= → =--system-site-packages= not effective or uv re-installed torch; proceed to P3.1 empirical check immediately.
+   - =python= in the demo venv is a different version than Python 3.12 → =.python-version= was not written correctly; fix P2.1.
+
+* Phase 3 — Lockfile + sync contract :phase3:
+** TODO P3.1 Empirical verify uv sync --frozen with --system-site-packages
+   :PROPERTIES:
+   :ID:       P3.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P2.2
+   :END:
+   DoD: documented under =** Log= whether =uv sync --frozen= respects =--system-site-packages= or re-installs DO_NOT_SHADOW packages. Decision recorded under =* Decisions= (lockfile flow).
+   Estimated time: ~15 min.
+   #+begin_src bash
+   ./bin/draccus-project-init smoke-test
+   cd projects/smoke-test
+   # Add a minimal non-foundation dep (e.g. requests) to pyproject.toml, then:
+   ./bin/draccus-run bash -lc '
+     cd /workspace/projects/smoke-test
+     uv lock
+     uv sync --frozen
+     python -c "import torch; print(\"torch from:\", torch.__file__)"
+     python -c "import requests; print(\"requests from:\", requests.__file__)"
+   ' 2>&1 | tee ../../.workstream/uv-overlay/artifacts/p3.1-sync-verify.log
+   cd ../..
+   rm -rf projects/smoke-test
+   #+end_src
+   Failure modes:
+   - =torch.__file__= under =.venv/= → fall back to =uv pip sync= pattern; document in =* Decisions=. Do NOT proceed with =uv sync --frozen= as the canonical path without documenting the fallback.
+   - =uv sync --frozen= exits non-zero on fresh venv → may need =uv sync= (without =--frozen=) for first install; document.
+   ** Log
+   (paste output here)
+
+** TODO P3.2 Extend scripts/validate-project-overlay.sh
+   :PROPERTIES:
+   :ID:       P3.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P3.1
+   :END:
+   DoD: =scripts/validate-project-overlay.sh <name>= (Gate 10):
+   1. Runs =uv sync --frozen= (or the P3.1-decided fallback) inside =draccus-run= for =projects/<name>=.
+   2. Re-asserts foundation paths: =torch=, =jax=, =numpy=, =scipy= all resolve from =/opt/draccus/view/base-ml=, not from =.venv/=.
+   3. Exits non-zero on any violation.
+   Then run =./scripts/validate-static.sh=.
+   Estimated time: ~30 min.
+   #+begin_src bash
+   shellcheck scripts/validate-project-overlay.sh
+   ./scripts/validate-static.sh
+   # Integration test:
+   ./bin/draccus-project-init test-overlay
+   ./scripts/validate-project-overlay.sh test-overlay
+   rm -rf projects/test-overlay
+   #+end_src
+   Failure modes:
+   - Foundation-path assertion not implemented → script passes even when torch resolves from .venv; add explicit =python -c 'import torch; assert "/opt/draccus" in torch.__file__'= check.
+
+** TODO P3.3 Extend scripts/validate_uv_layering.sh for uv.lock scanning
+   :PROPERTIES:
+   :ID:       P3.3
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P3.2
+   :END:
+   DoD: =scripts/validate_uv_layering.sh= iterates over =projects/*/uv.lock= (if any exist) and exits non-zero if any DO_NOT_SHADOW package appears as a direct or transitive dependency in a lockfile.
+   Then run =./scripts/validate-static.sh=.
+   Estimated time: ~20 min.
+   #+begin_src bash
+   shellcheck scripts/validate_uv_layering.sh
+   ./scripts/validate-static.sh
+   # Negative test: temporarily add torch to a test uv.lock, confirm script catches it.
+   #+end_src
+   Failure modes:
+   - Script only checks top-level packages, misses transitive pins → grep the full lockfile for each DO_NOT_SHADOW name; lockfile format is TOML with =name = "..."= lines.
+   - Script silently passes when no =projects/*/uv.lock= files exist → this is correct behaviour; add an info message.
+
+* Phase 4 — Multi-project model + cache :phase4:
+** TODO P4.1 Cache strategy decision + stress-test
+   :PROPERTIES:
+   :ID:       P4.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P3.3
+   :END:
+   DoD: confirmed option A (shared cache) works under ≥2 concurrent =uv sync= runs; no corruption observed. Results documented under =** Log=.
+   Estimated time: ~20 min.
+   #+begin_src bash
+   # Create two projects and sync concurrently:
+   ./bin/draccus-project-init proj-a
+   ./bin/draccus-project-init proj-b
+   ./bin/draccus-run bash -lc '
+     uv sync --frozen --project /workspace/projects/proj-a &
+     uv sync --frozen --project /workspace/projects/proj-b &
+     wait
+     echo "both syncs complete"
+   ' 2>&1 | tee .workstream/uv-overlay/artifacts/p4.1-cache-stress.log
+   # Verify no corruption:
+   ./scripts/validate-project-overlay.sh proj-a
+   ./scripts/validate-project-overlay.sh proj-b
+   rm -rf projects/proj-a projects/proj-b
+   #+end_src
+   Failure modes:
+   - Cache corruption (corrupted wheel or broken hardlinks) → switch to =--link-mode=hardlink= or per-project cache (option B); document in =* Decisions=.
+   - Concurrent sync race on lockfile → not expected with =--frozen=; if seen, serialise syncs in =validate-projects-all.sh=.
+
+** TODO P4.2 Document multi-project DAG in DESIGN.md §8.2 with Mermaid
+   :PROPERTIES:
+   :ID:       P4.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P4.1
+   :END:
+   DoD: =DESIGN.md §8.2= contains a Mermaid diagram showing:
+   #+begin_src
+   graph LR
+     base-ml["/opt/draccus/view/base-ml\n(torch, jax, numpy, scipy, …)"]
+     base-ml --> proj_a[".venv (project-a)\ntransformers, datasets, …"]
+     base-ml --> proj_b[".venv (project-b)\nvllm, flash-attn, …"]
+   #+end_src
+   And prose explaining the two-layer inheritance model.
+   Then run =./scripts/validate-static.sh=.
+   Estimated time: ~20 min.
+   Failure modes:
+   - Diagram shows torch as a node inside .venv → factually wrong; correct to show it only under base-ml.
+
+** TODO P4.3 Add scripts/validate-projects-all.sh (Gate 10c)
+   :PROPERTIES:
+   :ID:       P4.3
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P4.2
+   :END:
+   DoD: =scripts/validate-projects-all.sh= iterates over every =projects/*/= directory (excluding =_template/=), calls =scripts/validate-project-overlay.sh= for each, exits non-zero on first failure.
+   Wired into =scripts/validate-all.sh= as Gate 10c (after existing Gate 10).
+   Then run =./scripts/validate-static.sh=.
+   Estimated time: ~20 min.
+   #+begin_src bash
+   shellcheck scripts/validate-projects-all.sh
+   ./scripts/validate-static.sh
+   # Verify it is wired:
+   grep -n "validate-projects-all" scripts/validate-all.sh
+   #+end_src
+   Failure modes:
+   - Script iterates =projects/_template/= → must explicitly skip =_template=.
+   - Not wired into =validate-all.sh= → Gate 10c is not exercised in full-suite run; add call and re-run Gate 0.
+
+* Phase 5 — Acceptance & retrospective :phase5:
+** TODO P5.1 Full validation suite with ≥2 real projects
+   :PROPERTIES:
+   :ID:       P5.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P4.3
+   :END:
+   DoD: =./scripts/validate-all.sh= exits 0 on the GPU host with ≥2 real projects present; Gate 10c (=validate-projects-all.sh=) passes; all existing gates continue to pass.
+   Estimated time: ~10-30 min.
+   #+begin_src bash
+   # Ensure ≥2 real projects exist (not _template):
+   ls projects/
+   ./scripts/validate-all.sh 2>&1 \
+     | tee .workstream/uv-overlay/artifacts/p5.1-validate-all.log
+   #+end_src
+   Failure modes:
+   - Gate 10c finds a DO_NOT_SHADOW pin in a project uv.lock → that project's pyproject.toml was hand-edited incorrectly; remove the pin and re-lock.
+   - Any gate regressed by the new scripts → identify the gate from the log, fix the script, re-run; do NOT mark DONE with a failing gate.
+   - GPU absent → Gates requiring CUDA cannot pass; document in =** Log= and arrange a GPU runner.
+
+** TODO P5.2 Promote stable facts into DESIGN.md and update AGENTS.md
+   :PROPERTIES:
+   :ID:       P5.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P5.1
+   :END:
+   DoD:
+   - =DESIGN.md §8.1= — Two-layer inheritance model (prose + Mermaid diagram from P4.2).
+   - =DESIGN.md §8.2= — =bin/draccus-project-init= usage and invariants.
+   - =DESIGN.md §8.3= — Lockfile contract (=uv lock= + commit, =uv sync --frozen= in automation).
+   - =DESIGN.md §8.4= — Cache strategy (option A, shared, link-mode=copy).
+   - =DESIGN.md §8.5= — Gate 10/10c validation hooks.
+   - =AGENTS.md= updated with one-line pointer: "Use =bin/draccus-project-init <name>= to create a new uv project; see =DESIGN.md §8=."
+   Then run =./scripts/validate-static.sh=.
+   Estimated time: ~30 min.
+   Failure modes:
+   - Gate 0 fails on DESIGN.md or AGENTS.md edits (ruff/yamllint) → unlikely for Markdown; check for stray YAML fences or trailing whitespace.
+
+** TODO P5.3 Retrospective
+   :PROPERTIES:
+   :ID:       P5.3
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P5.1
+   :END:
+   Write ≥ 3 bullets under =* Retrospective=. Cover: surprises, automation candidates, doc gaps.
+   Then, before closing the workstream:
+   - Confirm =git status= is clean OR document intentional uncommitted state under =* Notes=.
+   - Check that =* Decisions= is fully filled; no placeholder text remains.
+
+* Retrospective
+(fill in during P5.3)
+
+* Notes
+Free-form scratchpad. Move stable facts into design.md or DESIGN.md when settled.
+- This workstream fills the deferred bullet from =.workstream/spack-envs-bootstrap/design.md= §2 ("Curating per-project uv overlays (separate workstream)").
+- The DO_NOT_SHADOW array lives in =scripts/validate_uv_layering.sh=; read it before modifying any project =pyproject.toml=.
