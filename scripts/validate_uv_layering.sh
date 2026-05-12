@@ -20,6 +20,8 @@ set -euo pipefail
 
 # shellcheck source=../lib/draccus-env.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/draccus-env.sh"
+# shellcheck source=../lib/draccus-project.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/draccus-project.sh"
 
 # ============================================================================
 # Single source of truth: packages that must never be shadowed by UV
@@ -67,13 +69,17 @@ fail() {
 }
 
 python_in_venv() {
-  # Run python inside the test venv (created by this script)
+  local snippet_q
+  snippet_q="$(printf '%q' "$1")"
+  # shellcheck disable=SC2086 # snippet_q from printf %q is safe to expand unquoted after python -c
   "$DRACCUS_BUNDLE/bin/draccus-run" bash -lc "
     set -euo pipefail
-    . /opt/draccus/spack/share/spack/setup-env.sh
-    spack env activate -p base-ml 2>/dev/null || true
-    source /tmp/draccus-uv-verify/.venv/bin/activate
-    python -c \"$1\"
+    export PATH=\"/opt/draccus/view/base-ml/bin:\${PATH}\"
+    export SPACK_ROOT=/opt/draccus/spack
+    source /opt/draccus/cache/draccus-uv-verify/.venv/bin/activate
+    _ml_site=/opt/draccus/view/base-ml/lib/python3.12/site-packages
+    export PYTHONPATH=\"\${_ml_site}\${PYTHONPATH:+:\${PYTHONPATH}}\"
+    exec python -c ${snippet_q}
   "
 }
 
@@ -88,10 +94,10 @@ echo ""
 echo "[T8.1] Creating isolated test venv (if needed)"
 "$DRACCUS_BUNDLE/bin/draccus-run" bash -lc '
   set -euo pipefail
-  . /opt/draccus/spack/share/spack/setup-env.sh
-  spack env activate -p base-ml 2>/dev/null || true
+  export PATH="/opt/draccus/view/base-ml/bin:${PATH}"
+  export SPACK_ROOT=/opt/draccus/spack
 
-  VENV_DIR="/tmp/draccus-uv-verify/.venv"
+  VENV_DIR="/opt/draccus/cache/draccus-uv-verify/.venv"
   if [[ -d "$VENV_DIR" ]]; then
     echo "  Reusing existing test venv at $VENV_DIR"
   else
@@ -102,9 +108,13 @@ echo "[T8.1] Creating isolated test venv (if needed)"
 
   # Install baseline UV packages (idempotent)
   source "$VENV_DIR/bin/activate"
+  _ml_site=/opt/draccus/view/base-ml/lib/python3.12/site-packages
+  export PYTHONPATH="${_ml_site}${PYTHONPATH:+:${PYTHONPATH}}"
   uv pip install --quiet transformers datasets accelerate tokenizers safetensors
   echo "  Baseline UV packages installed"
 '
+draccus_project_neutralize_pip "$DRACCUS_BUNDLE/cache/draccus-uv-verify/.venv"
+
 pass "Test venv ready with baseline packages"
 
 # ============================================================================
@@ -148,7 +158,7 @@ import importlib
 try:
     mod = importlib.import_module('${mod_name}')
     path = getattr(mod, '__file__', '') or ''
-    if '/tmp/draccus-uv-verify/.venv' in path:
+    if '/opt/draccus/cache/draccus-uv-verify/.venv' in path:
         print('OK')
     elif '/opt/draccus/' in path:
         print('SPACK: ' + path)

@@ -212,7 +212,7 @@ Looking at `envs/base-ml/spack.yaml`:
 - **Per-package CUDA requirements**, never global. `py-torch`, `py-jaxlib`, and `nccl` carry `cuda_arch=100`; torch is intentionally `~magma`. Applying CUDA to `packages:all` would force CUDA variants onto things like `cmake` and explode build time.
 - **`concretizer.unify: true` + `reuse: true`** — single DAG. This is what guarantees the torch/jax/numpy ABI compatibility uv depends on.
 - **`duplicates: minimal`** with bumped allowances for `python: 2`, `cmake: 2`, `gcc: 2`, `llvm: 2`. Necessary because Spack's ML stack tends to want bootstrap-pythons and meta-build-pythons.
-- **`padded_length: 128`** on `install_tree` — gives rpath relocation headroom (Spack pads install prefixes so binaries can be relocated by buildcache install).
+- **`padded_length: 128`** on `install_tree` — gives rpath relocation headroom (Spack pads install prefixes so binaries can be relocated by buildcache install). Side effect: `sys.path` in the Spack Python shows long `__spack_path_placeholder__` paths (the real install prefix, not the view symlink). This is cosmetic — the view `site-packages` (`/opt/draccus/view/base-ml/lib/python3.12/site-packages`) is always on `sys.path` and is where foundation packages (`torch`, `jax`, `numpy`, etc.) resolve from.
 - **Top-level specs are constraint-redundant** (`py-torch ... ^python@3.12 ^cuda@13.1.1 ^cudnn@9.17: ^nccl@2.29:`). Belt-and-suspenders: the `requires:` block already pins, but spelling it out at the spec line makes failures legible in `spack concretize` output.
 
 `base-sys` is the deliberately-boring counterpart: gcc, llvm+clang+lld, cmake/ninja/meson, git, debuggers, common CLIs. No CUDA. It exists so `view/base-sys/bin` can lead `PATH` and provide the toolchain even when `base-ml` is half-built.
@@ -223,18 +223,48 @@ Looking at `envs/base-ml/spack.yaml`:
 
 Draccus enforces a strict separation:
 
+- **`uv`-the-binary** is a *foundation tool*: pinned alongside `gcc`/`nvcc` inside the NVIDIA rootfs at `/usr/local/bin/uv` (`scripts/uv-version.env`; installed by `./scripts/bootstrap-rootfs.sh`). Bumping it is a foundation-level PR plus rootfs rebuild, same workload class as bumping a Spack pin. There is no host override knob—the bundle thesis is distraction-free parity.
+- **`uv`-managed packages** are the *project layer*: fast-moving, per-project, often `uv.lock`-tracked (`transformers`, `datasets`, etc.).
 - **Spack `base-ml`** owns the heavy foundation: `torch`, `jax`, `jaxlib`, `numpy`, `scipy`, CUDA/cuDNN/NCCL, MKL, FFmpeg, etc. (`py-torch` is built without MAGMA.)
-- **uv** only manages fast-moving packages above it: `transformers`, `datasets`, `accelerate`, `peft`, `vllm`, `flash-attn`, etc.
+- **uv resolver** installs only packages above that foundation (`transformers`, `peft`, `vllm`, `flash-attn`, …).
 
 Projects must create venvs with:
 
 ```bash
-uv venv --python "$(which python)" --system-site-packages .venv
+draccus-uv venv --python "$(which python)" --system-site-packages .venv
 ```
+
+(`draccus-uv …` forwards to `uv` inside `draccus-run` so `UV_EXTRA_OVERRIDES` is active.) After creation, `draccus_project_neutralize_pip` copies `shims/pip` onto `.venv/bin/pip`, `.venv/bin/pip3`, and any `.venv/bin/pip3.*` present (recent `uv venv` may omit pip stubs altogether; neutralize installs them explicitly) so `source .venv/bin/activate && pip install torch` fails fast with the same message as global `pip`.
 
 The `--system-site-packages` flag allows the venv to see Spack's torch/jax while keeping project packages local.
 
-**Authoritative check**: `scripts/validate_uv_layering.sh` enforces the invariant. It:
+### 8.1 Enforcement chain (do not delete one layer and assume you are safe)
+
+| Layer | Surface | When it fires |
+|-------|---------|---------------|
+| Resolver constraint | `UV_EXTRA_OVERRIDES` via `draccus-run` / `draccus-uv` | `uv lock` / `uv pip install` |
+| Command shim | `shims/pip`, `shims/pip3` on `PATH` + venv `pip*` copies | any `pip` / `pip3` invocation |
+| Static scanner | Gate 10b `validate_uv_layering.sh` on `uv.lock` / venv scans | `./scripts/validate_uv_layering.sh` |
+| Runtime probe | `validate-project-overlay.sh` checks `torch.__file__`, etc. | Gate 10 |
+
+`python -m pip install …` is intentionally *not* blocked (expert hatch; would require imports of `pip` to fail). Casual shadowing paths are blocked; Gate 10b remains the safety net for lockfile footprints.
+
+### 8.2 Why PATH shims vs removing `py-pip`
+
+Removing `py-pip` from `base-ml` would touch the Spack graph and upset packages that legitimately depend on pip at build time. Instead, `/opt/draccus/shims` is mounted read-only ahead of `/opt/draccus/view/base-ml/bin`, so bundle `pip`/`pip3` supersede py-pip’s executables inside the namespace.
+
+### 8.3 Retrofit an existing `.venv`
+
+If a project venv was created before shim neutralization landed:
+
+```bash
+source lib/draccus-project.sh
+draccus_project_neutralize_pip projects/<name>/.venv
+```
+
+(or the absolute path to that `.venv`).
+
+**Authoritative check**: `scripts/validate_uv_layering.sh` enforces the layering invariant alongside the table above:
 
 - Maintains the single source of truth "do-not-shadow" list (`torch`, `jax`, `jaxlib`, `numpy`, `scipy`, `triton`, `nvidia-*` pip packages).
 - Scans for leaked `nvidia-*` pip distributions in the UV venv.
@@ -242,7 +272,7 @@ The `--system-site-packages` flag allows the venv to see Spack's torch/jax while
 
 Run with `RUN_HEAVY_INFERENCE=1` to include the heavy inference package tests. Shadowing any foundation package is forbidden and will cause validation to fail.
 
-**The DO_NOT_SHADOW array is duplicated by intent** between `CLAUDE.md`, `validate_uv_layering.sh`, and this document — Gate 0 checks the three stay synchronized. That tri-redundancy is the load-bearing detail; it's why the invariant survives drift.
+**The DO_NOT_SHADOW array is duplicated by intent** between `CLAUDE.md` / `AGENTS.md`, `validate_uv_layering.sh`, `scripts/uv_overrides.txt`, and this document — Gate 0 checks they stay synchronized. That redundancy is load-bearing alongside the shim layer.
 
 ---
 
@@ -273,7 +303,7 @@ Values below come from `.workstream/spack-envs-bootstrap/` execution on a **warm
 Operational reminders promoted from that run:
 
 - **`draccus-run` keeps `/opt/draccus/spack` read-only** — `spack env activate` is not needed (and fails on the RO mount); `PATH` already points at the ML view by default.
-- **`DRACCUS_HOST_UV_BIN`** (set by `bin/draccus-uv`) — makes host `uv` available inside run mode via a transient bind (`/tmp/uv`).
+- **`uv` toolchain** ships in the NVIDIA rootfs at `/usr/local/bin/uv` (`scripts/bootstrap-rootfs.sh`, pin in `scripts/uv-version.env`); **`pip`/`pip3`** resolve to `/opt/draccus/shims/…`, which instructs callers to use `draccus-uv pip`.
 - **JAX on CUDA 13 toolkit** — may need SONAME stubs for `libcublas` / `nvidia-*` layouts; see `.workstream/spack-envs-bootstrap/design.md` §7.8 and `.workstream/spack-envs-bootstrap/artifacts/p4.3-jax-nvidia-stubs.sh`.
 
 Further detail stays in `.workstream/spack-envs-bootstrap/design.md`, `tracker.org`, and per-gate logs under `.workstream/spack-envs-bootstrap/artifacts/`.

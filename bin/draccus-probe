@@ -3,6 +3,10 @@ set -euo pipefail
 
 # shellcheck source=../lib/draccus-env.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/draccus-env.sh"
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../scripts/uv-version.env"
+export UV_VERSION
+
 DRACCUS_RUN="${DRACCUS_RUN:-$DRACCUS_BUNDLE/bin/draccus-run}"
 
 echo "[outer] bwrap"
@@ -43,5 +47,34 @@ if ! "$DRACCUS_RUN" bash -lc '
   echo "  sudo sysctl kernel.unprivileged_userns_clone=1"
   echo "  sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0   # Debian/Ubuntu"
   echo "Then re-run: $0"
+  exit 1
+fi
+
+echo ""
+echo "[inner] uv path + pinned pip shim"
+if ! "$DRACCUS_RUN" bash -lc '
+  set -euo pipefail
+  test "$(command -v uv)" = /usr/local/bin/uv
+  test "$(command -v pip)" = /opt/draccus/shims/pip
+  test "$(command -v pip3)" = /opt/draccus/shims/pip3
+  set +e
+  pip_err="$(pip 2>&1)"
+  pip_rc="$?"
+  set -euo pipefail
+  test "$pip_rc" -eq 2
+  grep -Fq "pip is disabled inside draccus" <<<"$pip_err"
+
+  set +e
+  pip_err3="$(pip3 2>&1)"
+  pip_rc3="$?"
+  set -euo pipefail
+  test "$pip_rc3" -eq 2
+  grep -Fq "pip is disabled inside draccus" <<<"$pip_err3"
+
+  uv --version | grep -qF "$UV_VERSION"
+'; then
+  echo ""
+  echo "ERROR: uv / pip shim contract check failed inside the namespace." >&2
+  echo "Re-run bootstrap: ./scripts/bootstrap-rootfs.sh" >&2
   exit 1
 fi

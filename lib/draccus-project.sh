@@ -46,3 +46,34 @@ draccus_project_assert_inside() {
 draccus_project_uv_venv_args() {
   echo '--python "$(which python)" --system-site-packages .venv'
 }
+
+# Replace .venv pip stubs with the bundle pip shim (copies $DRACCUS_BUNDLE/shims/pip — no inline body).
+draccus_project_neutralize_pip() {
+  local vdir="$1"
+  local shim="${DRACCUS_BUNDLE}/shims/pip"
+
+  if [[ ! -f "$shim" ]]; then
+    echo "draccus_project_neutralize_pip: missing shim ${shim}" >&2
+    return 1
+  fi
+  if [[ ! -d "${vdir}/bin" ]]; then
+    echo "draccus_project_neutralize_pip: missing ${vdir}/bin" >&2
+    return 1
+  fi
+  if [[ ! -f "${vdir}/pyvenv.cfg" ]]; then
+    echo "draccus_project_neutralize_pip: not a venv (missing ${vdir}/pyvenv.cfg)" >&2
+    return 1
+  fi
+
+  install -m 0755 "$shim" "${vdir}/bin/pip"
+  install -m 0755 "$shim" "${vdir}/bin/pip3"
+
+  local path
+  shopt -s nullglob
+  for path in "${vdir}/bin/pip3."*; do
+    [[ -e "$path" ]] || continue
+    [[ "$path" -ef "${vdir}/bin/pip3" ]] && continue
+    install -m 0755 "$shim" "$path"
+  done
+  shopt -u nullglob
+}

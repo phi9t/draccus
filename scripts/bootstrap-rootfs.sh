@@ -36,19 +36,27 @@ DRACCUS_CUDA_DOCKER_IMAGE="${DRACCUS_CUDA_DOCKER_IMAGE:-nvidia/cuda:13.1.1-cudnn
 
 finalize_rootfs_overlay() {
   echo "[bootstrap-rootfs] bind-mount stubs + optional network snapshot"
+  local _stub
+  sudo mkdir -p "${DRACCUS_ROOTFS%/}/usr/local/bin"
+
   sudo mkdir -p \
     "$DRACCUS_ROOTFS/opt/draccus/spack" \
     "$DRACCUS_ROOTFS/opt/draccus/view" \
     "$DRACCUS_ROOTFS/opt/draccus/cache" \
     "$DRACCUS_ROOTFS/opt/draccus/build" \
     "$DRACCUS_ROOTFS/opt/draccus/envs" \
-    "$DRACCUS_ROOTFS/work/src"
+    "$DRACCUS_ROOTFS/workspace" \
+    "$DRACCUS_ROOTFS/usr/lib/x86_64-linux-gnu"
+  # Placeholders for host-driver bind-mount targets (bubblewrap cannot create new files under ro-bind "/").
+  for _stub in libcuda.so.1 libnvidia-ml.so.1 libcudadebugger.so.1; do
+    sudo touch "$DRACCUS_ROOTFS/usr/lib/x86_64-linux-gnu/${_stub}"
+  done
+
   sudo chmod 0755 \
     "$DRACCUS_ROOTFS/opt" \
     "$DRACCUS_ROOTFS/opt/draccus" \
     "$DRACCUS_ROOTFS/opt/draccus/envs" \
-    "$DRACCUS_ROOTFS/work" \
-    "$DRACCUS_ROOTFS/work/src"
+    "$DRACCUS_ROOTFS/workspace"
 
   if [[ "${DRACCUS_ROOTFS_EMBED_NET_FILES:-1}" =~ ^1$ ]]; then
     if [[ -r /etc/hosts ]]; then
@@ -62,6 +70,12 @@ finalize_rootfs_overlay() {
   TZDATA_DEB="${TZDATA_DEB:-Etc/UTC}"
   if [[ -d "$DRACCUS_ROOTFS/usr/share/zoneinfo" ]]; then
     sudo ln -sf "/usr/share/zoneinfo/$TZDATA_DEB" "$DRACCUS_ROOTFS/etc/localtime"
+  fi
+
+  # Duplicate NVIDIA APT entries (one Signed-By, one not) prevent apt-get update in Ubuntu 24.04+ images.
+  if [[ -f "$DRACCUS_ROOTFS/etc/apt/sources.list.d/cuda.list" ]] \
+    && [[ -f "$DRACCUS_ROOTFS/etc/apt/sources.list.d/cuda-ubuntu2404-x86_64.list" ]]; then
+    sudo rm -f "$DRACCUS_ROOTFS/etc/apt/sources.list.d/cuda.list"
   fi
 }
 
@@ -161,7 +175,7 @@ maybe_chroot_upgrade_packages() {
   export DEBIAN_FRONTEND=noninteractive
   export LC_ALL=C.UTF-8
   local PKG_LIST
-  PKG_LIST="${DRACCUS_ROOTFS_EXTRA_APT_PACKAGES:-python3-minimal git curl wget unzip ca-certificates}"
+  PKG_LIST="${DRACCUS_ROOTFS_EXTRA_APT_PACKAGES:-autoconf automake cmake gfortran-13 git git-lfs libtool m4 ninja-build pkg-config python3-minimal unzip ca-certificates curl wget}"
 
   sudo LC_ALL=C.UTF-8 DEBIAN_FRONTEND=noninteractive chroot "$DRACCUS_ROOTFS" env PKG_LIST="$PKG_LIST" bash -lc '
     export DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true DEBCONF_NOWARNINGS=true
@@ -184,6 +198,75 @@ docker_rootfs_populated_p() {
 
 debootstrap_populated_p() {
   [[ -x "$DRACCUS_ROOTFS/bin/bash" ]] && [[ -x "$DRACCUS_ROOTFS/usr/bin/git" ]] && [[ -e "$DRACCUS_ROOTFS/usr/bin/python3" ]]
+}
+
+bootstrap_uv_into_rootfs() {
+  # shellcheck disable=SC1091
+  source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/uv-version.env"
+  [[ -n "${UV_VERSION:-}" ]] || {
+    echo "[bootstrap-rootfs] UV_VERSION unset (scripts/uv-version.env)" >&2
+    exit 1
+  }
+  [[ "${#UV_SHA256}" -eq 64 ]] || {
+    echo "[bootstrap-rootfs] UV_SHA256 must be 64 hex chars in scripts/uv-version.env" >&2
+    exit 1
+  }
+
+  if [[ -x "$DRACCUS_ROOTFS/usr/local/bin/uv" ]] \
+    && "$DRACCUS_ROOTFS/usr/local/bin/uv" --version 2>/dev/null | grep -qF "$UV_VERSION"; then
+    echo "[bootstrap-rootfs] uv ${UV_VERSION} already present at rootfs usr/local/bin/uv"
+    return 0
+  fi
+
+  mkdir -p "$DRACCUS_BUNDLE/state/cache"
+  local url="https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz"
+  local tgz="$DRACCUS_BUNDLE/state/cache/uv-${UV_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+  echo "[bootstrap-rootfs] fetching uv ${UV_VERSION} (${url})"
+
+  local attempt=1 max=5 delay=2
+  while [[ "$attempt" -le "$max" ]]; do
+    if curl -fsSL --retry 3 --retry-delay 2 -o "${tgz}.partial" "$url"; then
+      mv -f "${tgz}.partial" "$tgz"
+      break
+    fi
+    echo "[bootstrap-rootfs] uv download attempt ${attempt}/${max} failed; sleeping ${delay}s" >&2
+    rm -f "${tgz}.partial"
+    if [[ "$attempt" -eq "$max" ]]; then
+      echo "[bootstrap-rootfs] uv download failed after ${max} attempts" >&2
+      exit 1
+    fi
+    sleep "$delay"
+    delay=$((delay * 2))
+    attempt=$((attempt + 1))
+  done
+
+  local obs
+  obs="$(sha256sum "$tgz" | awk '{print $1}')"
+  if [[ "$obs" != "$UV_SHA256" ]]; then
+    echo "[bootstrap-rootfs] uv tarball sha256 mismatch (expected ${UV_SHA256}, got ${obs}); refusing to extract" >&2
+    rm -f "$tgz"
+    exit 1
+  fi
+
+  local tmp uv_bin=""
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/draccus-uv.XXXXXX")"
+  tar -xzf "$tgz" -C "$tmp"
+
+  if [[ -f "$tmp/uv" ]]; then
+    uv_bin="$tmp/uv"
+  else
+    uv_bin="$(find "$tmp" -maxdepth 4 -type f -name uv 2>/dev/null | head -n 1)"
+  fi
+
+  if [[ -z "$uv_bin" || ! -f "$uv_bin" ]]; then
+    echo "[bootstrap-rootfs] could not find uv executable in release tarball layout" >&2
+    rm -rf "$tmp"
+    exit 1
+  fi
+
+  sudo install -m 0755 "$uv_bin" "$DRACCUS_ROOTFS/usr/local/bin/uv"
+  rm -rf "$tmp"
+  echo "[bootstrap-rootfs] installed uv ${UV_VERSION} -> ${DRACCUS_ROOTFS}/usr/local/bin/uv"
 }
 
 populate_rootfs_maybe() {
@@ -223,5 +306,6 @@ populate_rootfs_maybe() {
 populate_rootfs_maybe
 finalize_rootfs_overlay
 maybe_chroot_upgrade_packages
+bootstrap_uv_into_rootfs
 
 echo "[bootstrap-rootfs] done (${DRACCUS_ROOTFS_MODE}): $DRACCUS_ROOTFS"

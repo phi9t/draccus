@@ -77,28 +77,13 @@ if [[ "${DRACCUS_OFFLINE:-0}" != "1" ]]; then
   fi
 fi
 
-# Optional host `uv` tool (outside the NVIDIA rootfs). When DRACCUS_HOST_UV_BIN points to an
-# executable on the host, we mount only that binary on a tiny tmpfs (avoids binding all of /usr/local/bin).
-host_uv_bwrap_args=()
-host_uv_path_prefix=""
-if [[ -n "${DRACCUS_HOST_UV_BIN:-}" ]]; then
-  if [[ ! -x "${DRACCUS_HOST_UV_BIN}" ]]; then
-    echo "draccus-run: DRACCUS_HOST_UV_BIN=${DRACCUS_HOST_UV_BIN} is not executable" >&2
-    exit 127
-  fi
-  uv_host_real="$(readlink -f "${DRACCUS_HOST_UV_BIN}")"
-  host_uv_bwrap_args=(
-    --ro-bind "${uv_host_real}" /tmp/uv
-  )
-  host_uv_path_prefix="/tmp:"
-fi
-
 # Host-only: default PATH lists base-ml before base-sys (Torch/JAX foundation `python`).
+# Pip/pip3 from Spack's py-pip are shadowed by bundle shims mounted at /opt/draccus/shims (prepended).
 # For infra/debug (base-sys ahead of base-ml), set DRACCUS_PREFER_SYS_PATH=1 on the host or use
 # bin/draccus-debug-shell.
-draccus_path_views="${host_uv_path_prefix}/opt/draccus/view/base-ml/bin:/opt/draccus/view/base-sys/bin"
+draccus_path_views="/opt/draccus/shims:/opt/draccus/view/base-ml/bin:/opt/draccus/view/base-sys/bin"
 if [[ "${DRACCUS_PREFER_SYS_PATH:-0}" =~ ^(1|true|yes)$ ]]; then
-  draccus_path_views="${host_uv_path_prefix}/opt/draccus/view/base-sys/bin:/opt/draccus/view/base-ml/bin"
+  draccus_path_views="/opt/draccus/shims:/opt/draccus/view/base-sys/bin:/opt/draccus/view/base-ml/bin"
 fi
 
 # Writable /opt (tmpfs): Intel oneAPI prerequisites probe writability under /opt.
@@ -126,7 +111,7 @@ exec "$BWRAP" \
   "${gpu_args[@]}" \
   "${driver_args[@]}" \
   "${net_overlay_args[@]}" \
-  "${host_uv_bwrap_args[@]}" \
+  --ro-bind "$DRACCUS_BUNDLE/shims" /opt/draccus/shims \
   --ro-bind "$DRACCUS_BUNDLE/envs" /opt/draccus/envs \
   --ro-bind "$DRACCUS_STATE/spack" /opt/draccus/spack \
   --ro-bind "$DRACCUS_STATE/view" /opt/draccus/view \

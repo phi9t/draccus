@@ -76,6 +76,10 @@ Always install packages with: draccus-uv pip install transformers datasets accel
 
 Target hardware is NVIDIA B200 (SM major=10). Do not change cuda_arch or TORCH_CUDA_ARCH_LIST without sign-off.
 
+### 6. Pip is disabled inside the namespace
+
+Bare `pip` / `pip3` on `PATH` resolve to bundle shims under `shims/pip` that exit with a clear message directing you to `draccus-uv pip` (or `uv pip` inside the namespace). Authoritative shim source: `shims/pip`. To change this: get explicit user approval and update both `shims/pip` (and `shims/pip3`, which points at the same content) and this file.
+
 ## Validation gate sequence
 
 | When | Gate | Command |

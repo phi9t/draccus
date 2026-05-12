@@ -1,0 +1,354 @@
+#+TITLE: uv in rootfs + pip blocked — Task Tracker
+#+AUTHOR: draccus
+#+STARTUP: overview logdone
+#+TODO: TODO(t) IN-PROGRESS(i!) BLOCKED(b@/!) | DONE(d!) WONTFIX(w@/!)
+#+PROPERTY: header-args :eval no
+#+FILETAGS: :workstream:uv-in-rootfs:
+
+* Overview
+This tracker drives the work described in [[file:design.md][design.md]].
+Read design.md §6 (invariants honored), §7 (necessary complexity), and §10 (handoff protocol) before claiming a task.
+
+Convention:
+- Each task has :OWNER:, :STARTED:, :FINISHED:, :DEPENDS: properties.
+- Append command output as nested =** Log= subheading or in a =:LOGBOOK:= drawer.
+- Never add an override knob like =DRACCUS_HOST_UV_BIN= (design.md §7.4).
+- Never modify =envs/*/spack.yaml= to remove =py-pip= (design.md §7.3 — PATH shadowing is the chosen mechanism).
+
+* Decisions
+Fill BEFORE starting P1. Block downstream tasks until filled.
+
+** uv version + sha256 pin
+   :PROPERTIES:
+   :DECIDED_BY: Cursor agent / user-directed execute-to-completion
+   :DECIDED_ON: 2026-05-11
+   :SIGN_OFF:  user-approved (implicit: user asked to run workstream to completion including bootstrap-rootfs change)
+   :END:
+   - UV_VERSION: =0.11.13=
+   - UV_SHA256:  =f830ea3d38ae1492acf53cb7f2cd0f81d6ae22b42d2d7310a6c7d42c451e1a43=
+   - Source URL pattern: =https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz=
+   - Rationale: pin to a stable release ≥ N-1 minor versions behind current to avoid bleeding-edge regressions; bump cadence is by-PR (same as Spack pins).
+
+** Pip-shim message + exit code
+   :PROPERTIES:
+   :DECIDED_BY: design.md default
+   :DECIDED_ON: 2026-05-11
+   :SIGN_OFF:  executor-default (wording is reversible)
+   :END:
+   - Proposed message (stderr): =pip is disabled inside draccus — use 'draccus-uv pip <args>' (or 'uv pip <args>' inside the namespace) instead=
+   - Proposed exit code: 2
+   - Gate 1 will grep for a sentinel substring; decide the sentinel so the test is stable across wording tweaks (suggested: literal string =pip is disabled inside draccus=).
+
+** Shim placement
+   :PROPERTIES:
+   :DECIDED_BY: design.md §7.3
+   :DECIDED_ON: 2026-05-11
+   :SIGN_OFF:  decided (design.md §7.3 — alternative considered and rejected)
+   :END:
+   - Choice: =shims/{pip,pip3}= at bundle root, mounted RO at =/opt/draccus/shims= inside namespace, PATH-prepended ahead of all views.
+   - Alternative considered: rootfs-only at =/usr/local/bin/pip=. Rejected — Spack's =py-pip= ships =pip= into =base-ml/view/bin/= which sits earlier in PATH; the shim must shadow the view.
+
+** Venv post-process strategy
+   :PROPERTIES:
+   :DECIDED_BY: design.md §7.5 + implementation refinement (venv may omit pip stubs; always install shim to pip/pip3)
+   :DECIDED_ON: 2026-05-11
+   :SIGN_OFF:  decided (design.md §7.5)
+   :END:
+   - Choice: REPLACE =.venv/bin/{pip,pip3,pip3.<N>}= with the same shim (not delete).
+   - Implementation: =lib/draccus-project.sh= exports =draccus_project_neutralize_pip <venv-path>=; copies from =shims/pip= onto =pip=/=pip3= (and replaces any =pip3.*= stubs). If stubs are absent, they are installed.
+   - Rationale: keeps the error message uniform and avoids surprising tooling that probes for =.venv/bin/pip= existence.
+
+** User approval to add packages to bootstrap-rootfs.sh
+   :PROPERTIES:
+   :DECIDED_BY: user (execute-until-complete request)
+   :DECIDED_ON: 2026-05-11
+   :SIGN_OFF:  user-approved
+   :END:
+   - Adds pinned uv binary under =rootfs/usr/local/bin/uv= (=pip=/=pip3= are bundle shims, not Debian packages inside rootfs).
+
+* Phase 0 — Decisions :phase0:
+** DONE P0.1 Fill the five Decisions entries above
+   :PROPERTIES:
+   :ID:       P0.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:
+   :END:
+   DoD: every =* Decisions= entry above has =DECIDED_BY=, =DECIDED_ON=, and a concrete choice/value.
+   Estimated time: ~30 min (mostly research for the uv version pin + sha256 lookup).
+   #+begin_src bash
+   # uv version + sha256:
+   UV_VERSION=<chosen>
+   curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz.sha256"
+   #+end_src
+   Failure modes:
+   - Leaving any entry blank → P1 will block.
+
+** DONE P0.2 Confirm user approval for bootstrap-rootfs.sh change
+   :PROPERTIES:
+   :ID:       P0.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P0.1
+   :END:
+   DoD: =* Decisions / User approval to add packages to bootstrap-rootfs.sh= entry has =SIGN_OFF: user-approved= and a name/timestamp.
+   Estimated time: <5 min (a question to the user).
+
+* Phase 1 — Rootfs adds :phase1:
+** DONE P1.1 Create scripts/uv-version.env
+   :PROPERTIES:
+   :ID:       P1.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P0.2
+   :END:
+   DoD: =scripts/uv-version.env= exists with =UV_VERSION= and =UV_SHA256= variables; sourced cleanly by =bash -lc 'source scripts/uv-version.env && echo "$UV_VERSION $UV_SHA256"'=.
+   Estimated time: ~5 min.
+   Acceptance: =./scripts/validate-static.sh= passes (new check: file exists, both vars defined, sha256 is 64 hex chars).
+
+** DONE P1.2 Add uv download + verify + install step to bootstrap-rootfs.sh
+   :PROPERTIES:
+   :ID:       P1.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P1.1
+   :END:
+   DoD: after =./scripts/bootstrap-rootfs.sh= completes on a fresh checkout, =rootfs/usr/local/bin/uv= exists, is executable, =rootfs/usr/local/bin/uv --version= reports =UV_VERSION=.
+   Estimated time: ~30 min including bootstrap re-run on a test path.
+   Implementation notes:
+   - Source =scripts/uv-version.env= near the top of =bootstrap-rootfs.sh=.
+   - After the docker extract / apt steps, =curl -fsSL ... | tar -xz= the uv release.
+   - Verify sha256 BEFORE extraction; hard-fail on mismatch (do not silently continue).
+   - =install -m 0755 uv "$DRACCUS_ROOTFS/usr/local/bin/uv"=.
+   - Idempotent: skip download if file already exists and sha256 matches.
+   Acceptance: bootstrap re-run shows the download step; =sha256sum "$DRACCUS_ROOTFS/usr/local/bin/uv"= matches =UV_SHA256=.
+   Failure modes:
+   - Network failure mid-download → exponential-backoff retry; abort after N attempts; do not leave a partial file.
+   - sha256 mismatch → hard-fail with a clear message; do not extract.
+
+** DONE P1.3 Create shims/{pip,pip3} at bundle root
+   :PROPERTIES:
+   :ID:       P1.3
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P0.1
+   :END:
+   DoD: =shims/pip= exists, executable, prints the agreed sentinel to stderr and exits with the agreed code; =shims/pip3= is identical content (or a symlink to =shims/pip=).
+   Estimated time: ~10 min.
+   Acceptance:
+   #+begin_src bash
+   ./shims/pip 2>&1 >/dev/null | grep -q 'pip is disabled inside draccus' && echo "shim message OK"
+   ./shims/pip; rc=$?; [[ "$rc" == "2" ]] && echo "shim exit code OK ($rc)"
+   diff <(cat shims/pip) <(cat shims/pip3) && echo "pip == pip3 (or symlink)"
+   #+end_src
+   Notes:
+   - This is the **single source of truth** for the shim contents — venv post-process copies from this file, never reproduces inline.
+   - Keep the script small (≤ 5 lines + shebang). Gate 0 checks shellcheck-clean.
+
+* Phase 2 — Simplify launchers :phase2:
+** DONE P2.1 Bind shims into draccus-run and prepend to PATH
+   :PROPERTIES:
+   :ID:       P2.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P1.3
+   :END:
+   DoD: =bin/draccus-run= contains =--ro-bind "$DRACCUS_BUNDLE/shims" /opt/draccus/shims= and the =PATH= setenv starts with =/opt/draccus/shims:=.
+   Estimated time: ~10 min.
+   Acceptance:
+   - =grep -n '/opt/draccus/shims' bin/draccus-run= shows both the bind and the PATH prepend.
+   - =./bin/draccus-run command -v pip= prints =/opt/draccus/shims/pip=.
+   - =./bin/draccus-run pip= exits 2 with the sentinel message.
+
+** DONE P2.2 Remove host_uv_* block and DRACCUS_HOST_UV_BIN from draccus-run
+   :PROPERTIES:
+   :ID:       P2.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P2.1
+   :END:
+   DoD: =bin/draccus-run= contains NO reference to =DRACCUS_HOST_UV_BIN=, =host_uv_bwrap_args=, or =host_uv_path_prefix=. The =/tmp:= PATH prefix is gone. =/tmp= is a plain tmpfs again.
+   Estimated time: ~5 min.
+   Acceptance:
+   - =grep -nE 'DRACCUS_HOST_UV_BIN|host_uv_' bin/draccus-run= empty.
+   - =./bin/draccus-run command -v uv= prints =/usr/local/bin/uv= (rootfs uv).
+   - =./bin/draccus-run env | grep PATH= shows no =/tmp:= prefix.
+
+** DONE P2.3 Collapse draccus-uv to a 3-line wrapper
+   :PROPERTIES:
+   :ID:       P2.3
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P2.2
+   :END:
+   DoD: =bin/draccus-uv= is exactly the shebang + =set -euo pipefail= + =exec "$(dirname "$0")/draccus-run" uv "$@"= (≤ 5 lines including shebang).
+   Estimated time: ~5 min.
+   Acceptance: =wc -l bin/draccus-uv= ≤ 5; =shellcheck bin/draccus-uv= clean; =./bin/draccus-uv --version= prints the pinned =UV_VERSION=.
+
+* Phase 3 — Venv post-process :phase3:
+** DONE P3.1 Add draccus_project_neutralize_pip to lib/draccus-project.sh
+   :PROPERTIES:
+   :ID:       P3.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P1.3
+   :END:
+   DoD: =lib/draccus-project.sh= exports a function =draccus_project_neutralize_pip <venv-path>= that:
+   1. Asserts the venv path exists and contains =bin/python=.
+   2. Resolves the shim source as =${DRACCUS_BUNDLE}/shims/pip=.
+   3. For each of =pip=, =pip3=, =pip3.*= under =<venv>/bin/=: replace with =install -m 0755 ${DRACCUS_BUNDLE}/shims/pip <target>=.
+   4. Does NOT duplicate the shim contents inline — copies from the source-of-truth file.
+   5. Is idempotent (re-running on an already-neutralised venv is a no-op).
+   Estimated time: ~30 min.
+   Acceptance: shellcheck clean; smoke test on a throwaway venv created via =uv venv= shows =.venv/bin/pip= now prints the sentinel.
+
+** DONE P3.2 Call neutralize_pip from bin/draccus-project-init
+   :PROPERTIES:
+   :ID:       P3.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P3.1
+   :END:
+   DoD: after =bin/draccus-project-init <name>= completes, =projects/<name>/.venv/bin/pip= is the shim (sentinel message + rc 2).
+   Estimated time: ~15 min.
+   Acceptance:
+   #+begin_src bash
+   ./bin/draccus-project-init smoke-pip
+   ./bin/draccus-run projects/smoke-pip/.venv/bin/pip 2>&1 >/dev/null | grep -q 'pip is disabled inside draccus'
+   rm -rf projects/smoke-pip
+   #+end_src
+
+** DONE P3.3 Document the retrofit one-liner for existing project venvs
+   :PROPERTIES:
+   :ID:       P3.3
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P3.2
+   :END:
+   DoD: =DESIGN.md §8= (or a new short section) documents how to retrofit existing project venvs that pre-date this workstream:
+   #+begin_src bash
+   source lib/draccus-project.sh
+   draccus_project_neutralize_pip projects/<existing-project>/.venv
+   #+end_src
+   Estimated time: ~10 min.
+
+* Phase 4 — Validation :phase4:
+** DONE P4.1 Extend validate-static.sh (Gate 0)
+   :PROPERTIES:
+   :ID:       P4.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P2.3 P3.2
+   :END:
+   DoD: =scripts/validate-static.sh= passes new checks:
+   - =scripts/uv-version.env= exists; =UV_VERSION= matches semver; =UV_SHA256= is 64 hex.
+   - =shims/pip= and =shims/pip3= exist, executable, contain the sentinel string, shellcheck-clean.
+   - =bin/draccus-run= contains the =shims= bind line AND the =/opt/draccus/shims:= PATH prepend.
+   - =bin/draccus-run= contains NO reference to =DRACCUS_HOST_UV_BIN= or =host_uv_=.
+   - =bin/draccus-uv= line count ≤ 5.
+   - No shim name collides with any binary in =envs/base-{sys,ml}/spack.yaml= root specs (cheap grep; full collision detection happens at Gate 1).
+   Estimated time: ~45 min.
+   Acceptance: =./scripts/validate-static.sh= exits 0; intentionally break one check at a time to confirm each new assertion fires.
+
+** DONE P4.2 Extend draccus-probe (Gate 1)
+   :PROPERTIES:
+   :ID:       P4.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P1.2 P2.3
+   :END:
+   DoD: =./bin/draccus-probe= asserts (inside the namespace):
+   - =command -v uv= resolves to =/usr/local/bin/uv=.
+   - =command -v pip= resolves to =/opt/draccus/shims/pip=.
+   - Running =pip= (and =pip3=) prints the sentinel and exits with the agreed code.
+   - =uv --version= prints =UV_VERSION= (from =scripts/uv-version.env=).
+   Estimated time: ~30 min.
+   Acceptance: =./bin/draccus-probe= exits 0 on a host that has been bootstrap'd post-P1.2.
+
+** DONE P4.3 Full validate-all.sh run
+   :PROPERTIES:
+   :ID:       P4.3
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P4.1 P4.2
+   :END:
+   DoD: =./scripts/validate-all.sh= exits 0 on a GPU host post-rootfs-rebuild. No prior gates regressed; new pip/uv checks pass.
+   Estimated time: ~15 min wall (warm cache).
+
+* Phase 5 — Docs :phase5:
+** DONE P5.1 Update DESIGN.md §8 (uv layering)
+   :PROPERTIES:
+   :ID:       P5.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P4.3
+   :END:
+   DoD (touches a user-owned core doc — confirm sign-off before commit):
+   - Add the enforcement chain table from design.md §7.1.
+   - Add the =uv=-binary vs =uv=-managed-packages framing from design.md §7.2.
+   - Document the PATH-ordering rationale from design.md §7.3.
+   - Document the retrofit one-liner from P3.3.
+
+** DONE P5.2 Update AGENTS.md "Critical invariants"
+   :PROPERTIES:
+   :ID:       P5.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P5.1
+   :END:
+   DoD: =AGENTS.md= "Critical invariants" gains a numbered entry: "pip is disabled inside the draccus namespace; use =draccus-uv pip= (or =uv pip= inside the namespace) instead. Authoritative shim source: =shims/pip=. To change this: get explicit user approval AND update both =shims/pip= and =AGENTS.md=."
+
+** DONE P5.3 Update README.md appendix
+   :PROPERTIES:
+   :ID:       P5.3
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P5.1
+   :END:
+   DoD: README appendix lists the pinned =uv= version alongside =cuda@13.1.1=, =py-torch@2.10.0=, etc. The "Three tools you use every day" table gains a tooltip-style note that pip is intentionally not in the list.
+
+** DONE P5.4 Retrospective
+   :PROPERTIES:
+   :ID:       P5.4
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P5.3
+   :END:
+   ≥ 3 bullets under =* Retrospective= covering:
+   - Did the shim produce any false-positives? (Tooling that legitimately needed bare =pip= and broke.)
+   - Were there any callers that fell back to =python -m pip= and tripped Gate 10b? Document the chain so the next maintainer doesn't reopen the "should we block =python -m pip=?" question without context.
+   - uv-version bump experience: did the rebuild work first try? Any surprises around sha256 sourcing?
+
+* Retrospective
+- Bare =pip=/=pip3=: no false-positive in Draccus itself (shim exits 2 with a deliberate message); any upstream script inside the sandbox that invokes plain =pip install= must switch to =draccus-uv pip=. Spack/py-pip’s real binaries remain reachable only off-shim PATH or via =python -m pip=.
+- =python -m pip=: still the expert hatch (not blocked intentionally). Enforcement remains Gate 10b on project lockfiles and runtime overlays, not shim import interception.
+- Pin bump ergonomics: release =.sha256= sidecar plus tarball URL pattern worked on first bootstrap after implementation; tarball layout favors top-level =uv= (fallback =find -print -quit=). Idempotent skip uses =uv --version | grep VERSION= rather than hashing the unpacked binary vs tarball digest.
+
+** Log (verification)
+   - Gate 0: =./scripts/validate-static.sh= exit **0**.
+   - Full suite: =./scripts/validate-all.sh= exit **0** (see agent log 2026-05-11).
+   - P3 acceptance note: when testing inside bwrap default =/workspace=, call project shim as =/workspace/projects/<name>/.venv/bin/pip= (not a host-relative =projects/...= path unless =DRACCUS_WORKSPACE= matches).
+
+* Notes
+Free-form scratchpad. Move stable facts into design.md or DESIGN.md when settled.
+- This workstream completes the "distraction-free" thesis claim made in =README.md= after commit =fefc6da=. Before this, =pip install torch= silently shadowed the foundation; after, every casual path either fails fast or trips Gate 10b.
+- =DRACCUS_HOST_UV_BIN= and the =host_uv_*= block in =bin/draccus-run= are deleted in P2.2. If you find yourself wanting to re-add an override knob, re-read design.md §7.4 first.
+- The shim at =shims/pip= is the **single source of truth** for the disabled-pip behaviour. Venv post-process copies from this file; do not inline the script in =lib/draccus-project.sh=.

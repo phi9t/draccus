@@ -8,6 +8,33 @@ set -euo pipefail
 # shellcheck source=../lib/draccus-env.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/draccus-env.sh"
 
+_draccus_uv_version_env_ok() {
+  local envf="$DRACCUS_BUNDLE/scripts/uv-version.env"
+  [[ -f "$envf" ]] || return 1
+  # shellcheck disable=SC1091
+  source "$envf"
+  [[ "${UV_VERSION:-}" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]] || return 1
+  [[ "${UV_SHA256:-}" =~ ^[a-f0-9]{64}$ ]] || return 1
+}
+
+_draccus_shims_dir_ok() {
+  local f n=0
+  shopt -s nullglob
+  for f in "$DRACCUS_BUNDLE/shims"/*; do
+    n=$((n + 1))
+    case "$(basename "$f")" in
+      pip | pip3) ;;
+      *) return 1 ;;
+    esac
+  done
+  shopt -u nullglob
+  [[ "$n" -eq 2 ]]
+}
+
+_draccus_run_binds_shims() {
+  grep -qF -- '--ro-bind "$DRACCUS_BUNDLE/shims" /opt/draccus/shims' "$DRACCUS_BUNDLE/bin/draccus-run"
+}
+
 # Counters for pass/fail
 pass_count=0
 fail_count=0
@@ -43,6 +70,7 @@ SHELL_FILES=(
   "$DRACCUS_BUNDLE/bin/draccus-debug-shell"
   "$DRACCUS_BUNDLE/bin/draccus-uv"
   "$DRACCUS_BUNDLE/lib/draccus-project.sh"
+  "$DRACCUS_BUNDLE/shims/pip"
   "$DRACCUS_BUNDLE/scripts/bootstrap-rootfs.sh"
   "$DRACCUS_BUNDLE/scripts/prune-draccus.sh"
   "$DRACCUS_BUNDLE/scripts/refresh-spack-lockfiles.sh"
@@ -242,10 +270,30 @@ done
 echo ""
 
 # ============================================================================
-# CHECK 9 - bwrap probe (optional)
+# CHECK 9 - pinned uv + pip shims (static)
 # ============================================================================
 
-echo "=== CHECK 9: bwrap probe (optional) ==="
+echo "=== CHECK 9: pinned uv + pip shims (static) ==="
+
+check "uv-version.env exists" "test -f \"$DRACCUS_BUNDLE/scripts/uv-version.env\""
+check "uv-version: semver + 64-hex sha256" "_draccus_uv_version_env_ok"
+check "shims directory: exactly pip + pip3" "_draccus_shims_dir_ok"
+check "shims/pip executable" "test -x \"$DRACCUS_BUNDLE/shims/pip\""
+check "shims/pip3 present" "test -e \"$DRACCUS_BUNDLE/shims/pip3\""
+check "shims/pip contains sentinel" "grep -Fq 'pip is disabled inside draccus' \"$DRACCUS_BUNDLE/shims/pip\""
+check "shims/pip3 contains sentinel" "grep -Fq 'pip is disabled inside draccus' \"$DRACCUS_BUNDLE/shims/pip3\""
+check "draccus-run ro-binds bundle shims to /opt/draccus/shims" "_draccus_run_binds_shims"
+check "draccus-run PATH leads with /opt/draccus/shims" "grep -qF 'draccus_path_views=\"/opt/draccus/shims:' \"$DRACCUS_BUNDLE/bin/draccus-run\""
+check "draccus-run has no host_uv / DRACCUS_HOST_UV_BIN" "! grep -qE 'DRACCUS_HOST_UV_BIN|host_uv_' \"$DRACCUS_BUNDLE/bin/draccus-run\""
+check "draccus-uv is a short wrapper (<=5 lines)" "test \"\$(wc -l < \"$DRACCUS_BUNDLE/bin/draccus-uv\" | tr -d ' ')\" -le 5"
+
+echo ""
+
+# ============================================================================
+# CHECK 10 - bwrap probe (optional)
+# ============================================================================
+
+echo "=== CHECK 10: bwrap probe (optional) ==="
 
 if command -v bwrap >/dev/null 2>&1; then
   echo "[INFO] bwrap available, running draccus-probe..."

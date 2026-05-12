@@ -36,6 +36,8 @@ That's it. `python` is the foundation ML interpreter with torch, jax, numpy, sci
 | `draccus-run <cmd>` | Run any command inside the sandbox (training scripts, inference, CI) |
 | `draccus-uv <uv-args>` | Add and manage fast-moving Python packages on top of the foundation |
 
+`pip` is intentionally not listed: bare `pip` / `pip3` are shimmed to fail fast inside the sandbox; use `draccus-uv pip …` instead.
+
 ## Adding packages with `draccus-uv`
 
 The foundation (torch, jax, CUDA, numpy, scipy) is built by Spack and lives in the read-only base-ml view. Everything else -- transformers, datasets, accelerate, flash-attn, vllm, your experiment code -- lives in a per-project uv virtualenv layered on top.
@@ -135,7 +137,7 @@ This section is for setting up or rebuilding the Draccus foundation. Most resear
 - `bubblewrap` (`bwrap`) installed and user namespaces enabled
 - `docker` and `sudo` (for rootfs bootstrap)
 - NVIDIA driver + devices visible on the host (for GPU work)
-- `uv` (for project workflows and `draccus-uv`)
+- `curl` on the bootstrap host (used to fetch the pinned `uv` binary into `rootfs/`)
 
 ### 1. Bootstrap the pinned rootfs
 
@@ -184,6 +186,7 @@ DRACCUS_BUNDLE="$PWD" ./scripts/bootstrap-rootfs.sh
 ```
 $DRACCUS_BUNDLE/
 ├── bin/                 # draccus-run, draccus-build, draccus-shell, draccus-uv, draccus-probe, ...
+├── shims/               # pip/pip3 shims mounted at /opt/draccus/shims inside the namespace
 ├── lib/                 # draccus-env.sh (portable bundle resolver), bwrap helpers
 ├── rootfs/              # pinned root filesystem (from Docker export)
 ├── state/
@@ -202,6 +205,7 @@ All paths inside the sandbox are stable at `/opt/draccus/...` and `/workspace`.
 
 | Component | Version | Notes |
 |-----------|---------|-------|
+| uv (static binary) | 0.11.13 | Installed to `rootfs/usr/local/bin/uv`; pin in `scripts/uv-version.env` |
 | CUDA | 13.1.1 | Matches rootfs Docker tag |
 | cuDNN | 9.17+ | |
 | NCCL | 2.29+ | |
@@ -232,6 +236,9 @@ Draccus passes through GPU devices from the host. Ensure `/dev/nvidia*` and NVID
 
 **Rootfs missing or incomplete**
 Re-run `DRACCUS_ROOTFS_FORCE=1 ./scripts/bootstrap-rootfs.sh`.
+
+**`sys.path` shows long `__spack_path_placeholder__` paths**
+Normal. Spack pads install prefixes to a fixed width (`padded_length: 128` in `spack.yaml`) so compiled binaries can be relocated via buildcache without recompilation. The Python binary has its real Spack install prefix baked in, so `sys.path` shows paths like `/opt/draccus/spack/opt/spack/__spack_path_placeholder__/.../python-3.12.13-.../lib/python3.12`. What matters: the **view site-packages** (`/opt/draccus/view/base-ml/lib/python3.12/site-packages`) is always on `sys.path`, and that is where `import torch` / `jax` / `numpy` resolve from. The padded paths are a Spack implementation detail you never interact with directly.
 
 **`spack env activate` fails with "Read-only file system"**
 Expected. The Spack tree is mounted read-only inside `draccus-run` / `draccus-shell`. You do not need Spack shell activation for daily work -- `PATH` already points at the base-ml view. Use `draccus-build` when Spack must write (install, concretize, etc.).

@@ -96,6 +96,8 @@ DRACCUS_WORKSPACE="$project_dir" "$DRACCUS_BUNDLE/bin/draccus-run" bash -lc '
     cd /workspace && uv lock
   '
 
+draccus_project_neutralize_pip "$project_dir/.venv"
+
 echo ""
 echo "Project '$name' initialized at:"
 echo "  $project_dir"
