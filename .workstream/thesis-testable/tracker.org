@@ -1,0 +1,327 @@
+#+TITLE: testable thesis — host contract + base-image matrix — Task Tracker
+#+AUTHOR: draccus
+#+STARTUP: overview logdone
+#+TODO: TODO(t) IN-PROGRESS(i!) BLOCKED(b@/!) | DONE(d!) WONTFIX(w@/!)
+#+PROPERTY: header-args :eval no
+#+FILETAGS: :workstream:thesis-testable:
+
+* Overview
+This tracker drives the work described in [[file:design.md][design.md]].
+Read design.md §6 (invariants honored), §7 (necessary complexity), and §10 (handoff protocol) before claiming a task.
+
+Convention:
+- Each task has :OWNER:, :STARTED:, :FINISHED:, :DEPENDS: properties.
+- Append command output as nested =** Log= subheading or in a =:LOGBOOK:= drawer.
+- Never duplicate the smoke test; =scripts/thesis-smoke-test.py= is the single source of truth (design.md §7.4).
+- Never broaden the matrix to "make it more impressive" — coverage of the contract is the goal (design.md §10).
+- A matrix entry that ends up =contract-rejected= is a **pass**, not a fail (design.md §7.3). Read that section before judging output.
+
+* Decisions
+Fill BEFORE starting P1. Block downstream tasks until filled.
+
+** Host-contract floor
+   :PROPERTIES:
+   :DECIDED_BY:
+   :DECIDED_ON:
+   :SIGN_OFF:  user-approval-required
+   :END:
+   - Linux kernel: (fill in, suggested ≥ 5.10)
+   - glibc: (fill in, suggested ≥ 2.31)
+   - bwrap: (fill in, suggested ≥ 0.6)
+   - NVIDIA driver: (fill in, verify B200 / cuda_arch=100 minimum from current driver release notes)
+   - userns unprivileged: (fill in — sysctl name + value, or equivalent capability)
+   - Rationale per axis: each entry needs a one-line "why this floor and not lower."
+
+** Matrix members
+   :PROPERTIES:
+   :DECIDED_BY:
+   :DECIDED_ON:
+   :SIGN_OFF:  executor-default with user-confirmation
+   :END:
+   - Positive (must pass): (fill in, suggested: ubuntu:20.04, ubuntu:24.04, debian:bookworm, nvidia/cuda:12.x-runtime-ubuntu22.04, rockylinux:9)
+   - Negative (must contract-reject): (fill in, suggested: alpine:latest as musl-libc proof)
+   - Each entry needs: image tag, the `docker run` flags required, the expected outcome (=pass= or =contract-rejected=).
+
+** Runner shape
+   :PROPERTIES:
+   :DECIDED_BY:
+   :DECIDED_ON:
+   :SIGN_OFF:  user-approval-required (affects budget + access)
+   :END:
+   - Options: GitHub Actions self-hosted (needs team-owned GPU runner) | internal CI server | manual on dev host
+   - Choice: (fill in)
+   - Trigger policy: (fill in — PR-blocking? main-only? nightly? all of the above?)
+
+** State distribution
+   :PROPERTIES:
+   :DECIDED_BY:
+   :DECIDED_ON:
+   :SIGN_OFF:  user-approval-required
+   :END:
+   - Choice: (fill in, suggested: pre-built bundle image at internal-registry/draccus-bundle:<rev>)
+   - Image build cadence: (fill in — on Spack-pin bump? nightly? both?)
+   - Reproducibility-matrix opt-in (DRACCUS_RUN_REPRODUCIBILITY_MATRIX=1, bootstrap-per-run): in scope or follow-up?
+
+** Smoke test scope
+   :PROPERTIES:
+   :DECIDED_BY:
+   :DECIDED_ON:
+   :SIGN_OFF:  executor-default (test contents can be tightened over time)
+   :END:
+   - Positive assertions (fill in from design.md §5 Decision 5):
+     - =torch.cuda.is_available() == True=
+     - =torch.cuda.get_device_capability(0) == (10, 0)=
+     - =jax.devices()[0].platform == 'gpu'=
+     - =torch.__file__= AND =numpy.__file__= under =/opt/draccus/view/base-ml/=
+   - Negative assertions:
+     - =subprocess.run(['pip', 'install', 'torch']).returncode != 0=
+     - =validate_uv_layering.sh scripts/validate_uv_layering_test.bad-uv.lock= exits non-zero
+     - Synthetic =python -m pip install torch= → Gate 10b catches at lockfile scan
+   - Sentinel-substring registry: =scripts/thesis-smoke-test.sentinels= names every string the test greps for.
+
+** Rootfs isolation contract
+   :PROPERTIES:
+   :DECIDED_BY:
+   :DECIDED_ON:
+   :SIGN_OFF:  user-approval-required
+   :END:
+   - Runtime rootfs mount: read-only via =draccus-run= / =draccus-offline=.
+   - Host network files: overlay live via =--ro-bind-data=; do not bake host =/etc/hosts= or =/etc/resolv.conf= into production rootfs.
+   - Host identity leakage: =HOME=/workspace=, =PYTHONNOUSERSITE=1=, no host home/profile/Nix paths inside namespace.
+   - Writable surfaces: only =/workspace=, =/tmp=, =/run=, =/opt/draccus/cache=, =/opt/draccus/build=, and documented one-offs such as =/var/intel=.
+   - Host escape hatch: NVIDIA driver libraries and devices only, audited through =lib/draccus-nvidia-mounts.sh=.
+
+* Phase 0 — Decisions :phase0:
+** TODO P0.1 Fill the six Decisions entries above
+   :PROPERTIES:
+   :ID:       P0.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:
+   :END:
+   DoD: every =* Decisions= entry has =DECIDED_BY=, =DECIDED_ON=, and concrete values.
+   Estimated time: ~1 h (mostly research for driver-version floor + runner-shape budget).
+
+** TODO P0.2 User sign-off on host-contract floor + runner shape + state distribution + rootfs isolation
+   :PROPERTIES:
+   :ID:       P0.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P0.1
+   :END:
+   DoD: four =SIGN_OFF: user-approved= entries with timestamp.
+   Estimated time: <30 min once P0.1 is done.
+
+* Phase 1 — Host + rootfs contract validators :phase1:
+** TODO P1.1 scripts/validate-host-contract.sh
+   :PROPERTIES:
+   :ID:       P1.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P0.2
+   :END:
+   DoD: script exits 0 on a satisfying host with a one-line summary; exits non-zero on any named violation with the message =host does not satisfy draccus contract: <reason>=. Reasons enumerated:
+   - =kernel <X> (need ≥ <FLOOR>)=
+   - =glibc <Y> (need ≥ <FLOOR>)=
+   - =bwrap <Z> (need ≥ <FLOOR>)=
+   - =nvidia driver <D> (need ≥ <FLOOR>) [skip if no GPU on host AND non-GPU mode opt-in]=
+   - =userns unprivileged: <sysctl-name>=<value> (need <expected>)=
+   Estimated time: ~2 h.
+   Acceptance:
+   - shellcheck clean
+   - on current dev host: exit 0
+   - mock each axis below the floor via env-var override or constructed PATH; each one exits with the right reason
+   - Gate 0 picks up the new script
+
+** TODO P1.2 scripts/validate-rootfs-isolation.sh
+   :PROPERTIES:
+   :ID:       P1.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P0.2
+   :END:
+   DoD: script verifies the isolated-rootfs contract:
+   - =rootfs/= exists and is not tracked source; symlink to =~/.automata/draccus= is allowed.
+   - =draccus-run= uses =--ro-bind "$DRACCUS_ROOTFS" /=.
+   - Production rootfs has no baked host =/etc/hosts= or =/etc/resolv.conf= snapshots.
+   - Inside =draccus-run=, writes to =/usr=, =/etc=, and =/opt/draccus/view= fail; writes to =/workspace=, =/tmp=, =/opt/draccus/cache=, and =/opt/draccus/build= succeed.
+   - Inside =draccus-run=, =HOME=/workspace=, =PYTHONNOUSERSITE=1=, and no host home/profile/Nix paths appear in =PATH= or =LD_LIBRARY_PATH=.
+   Acceptance:
+   - Adjacent test =scripts/validate-rootfs-isolation_test.sh= covers mockable static checks.
+   - Gate 0 picks up both script and adjacent test.
+
+** TODO P1.3 Document the contract in DESIGN.md §13 (or §10)
+   :PROPERTIES:
+   :ID:       P1.3
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P1.1 P1.2
+   :END:
+   DoD: =DESIGN.md= has a "Host contract" and "Rootfs isolation" section with the floors/boundaries, the rationale per axis, and pointers to =scripts/validate-host-contract.sh= and =scripts/validate-rootfs-isolation.sh= as enforcement surfaces.
+   Estimated time: ~30 min.
+
+* Phase 2 — Canonical smoke test :phase2:
+** TODO P2.1 scripts/thesis-smoke-test.py
+   :PROPERTIES:
+   :ID:       P2.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P0.2
+   :END:
+   DoD: single script consumed by README, matrix, and Gate 14. Contains:
+   - Positive assertions from P0 Decision 5.
+   - Negative assertions from P0 Decision 5 (uses =subprocess= for command-level checks).
+   - Sentinel-substring matching (no full-message matching).
+   - =--help= prints the literal commands a researcher should see in the README.
+   - Exit code: 0 on full pass, 1 on assertion failure, 2 on environment problem (e.g., not running inside =draccus-run=).
+   Estimated time: ~2 h.
+   Acceptance:
+   - =./bin/draccus-run scripts/thesis-smoke-test.py= exits 0 on the dev host's GPU.
+   - Each negative assertion can be flipped (temporarily comment out the pip-shim wiring) to confirm the test catches the failure.
+
+** TODO P2.2 Adjacent tests and fixtures for smoke/layering sentinels
+   :PROPERTIES:
+   :ID:       P2.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P2.1
+   :END:
+   DoD:
+   - =scripts/thesis-smoke-test_test.py= tests =scripts/thesis-smoke-test.py=.
+   - =scripts/validate_uv_layering_test.sh= tests =scripts/validate_uv_layering.sh=.
+   - =scripts/thesis-smoke-test.sentinels= lists every sentinel substring relied on by negative tests, one per line, with the producer named in a comment (e.g., =# pip-shim (shims/pip)=).
+   - =scripts/validate_uv_layering_test.bad-uv.lock= is a minimal lockfile that DOES contain a DO_NOT_SHADOW pin (e.g., =torch==2.10.0=) so Gate 10b's scanner triggers.
+   - Gate 0 grep-verifies each sentinel in =scripts/thesis-smoke-test.sentinels= still appears in its producer's source.
+   - No broad top-level =tests/= tree is introduced for this workstream.
+   Estimated time: ~45 min.
+
+* Phase 3 — Matrix harness :phase3:
+** TODO P3.1 scripts/thesis-matrix.sh
+   :PROPERTIES:
+   :ID:       P3.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P2.2 P1.1 P1.2
+   :END:
+   DoD: shell script that, for each matrix entry:
+   1. =docker run= (or =podman run=) with the recorded flags + GPU passthrough + bundle volume mount.
+   2. Inside the container: source the bundle, run =scripts/validate-host-contract.sh=.
+   3. If contract passes: run =./bin/draccus-run scripts/thesis-smoke-test.py=, capture rc.
+   4. If contract fails: capture the named reason; mark entry =contract-rejected=.
+   5. Compare entry's outcome to the expected outcome from =* Decisions / Matrix members=.
+   6. Emit a per-entry one-line summary AND a final table; exit non-zero on any mismatch.
+   Estimated time: ~4 h.
+   Acceptance:
+   - shellcheck clean
+   - Runs locally end-to-end on the dev host, given the runner-shape from P0
+   - Per-entry transcripts captured under =.workstream/thesis-testable/artifacts/=
+
+** TODO P3.2 First green matrix run on real runner
+   :PROPERTIES:
+   :ID:       P3.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P3.1
+   :END:
+   DoD: a complete matrix run on the runner from P0 Decision 3 where every entry's outcome matches the expected outcome (positives =pass=, negatives =contract-rejected=). Transcript captured in =artifacts/p3.2-first-green-matrix.log=.
+   Estimated time: ~2 h once P3.1 is solid (mostly runner setup).
+   Failure modes:
+   - One positive entry fails the smoke test → real regression; file blocker, do not paper over with =SKIP=.
+   - The negative entry (Alpine) ends up =pass= → contract floor has a hole; tighten in P1.1 first.
+
+* Phase 4 — Wire into validate-all.sh :phase4:
+** TODO P4.1 Add Gate 14 to scripts/validate-all.sh
+   :PROPERTIES:
+   :ID:       P4.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P3.2
+   :END:
+   DoD: =scripts/validate-all.sh= calls =scripts/thesis-matrix.sh= as "Gate 14: thesis matrix" when =DRACCUS_RUN_THESIS_MATRIX=1=. Without the env var: prints =[Gate 14] thesis matrix (skipped — set DRACCUS_RUN_THESIS_MATRIX=1)= and continues.
+   Estimated time: ~15 min.
+   Acceptance:
+   - =DRACCUS_RUN_THESIS_MATRIX=1 ./scripts/validate-all.sh= runs the matrix as the final gate.
+   - Bare =./scripts/validate-all.sh= prints the skip line, exits 0 (assuming Gates 0–13 green).
+
+** TODO P4.2 Document Gate 14 + outcomes in DESIGN.md §10
+   :PROPERTIES:
+   :ID:       P4.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P4.1
+   :END:
+   DoD: =DESIGN.md §10= lists Gate 14 with: name, command, env-var trigger, three possible per-entry outcomes (=pass=, =contract-rejected=, =fail=), green criterion.
+   Estimated time: ~20 min.
+
+* Phase 5 — README contract section + Try-it tie-in :phase5:
+** TODO P5.1 Replace README "Try it" inline commands with the script
+   :PROPERTIES:
+   :ID:       P5.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P4.2
+   :END:
+   DoD: README "Try it" block becomes:
+   #+begin_src bash
+   ./bin/draccus-shell
+   # then inside the shell:
+   python scripts/thesis-smoke-test.py
+   #+end_src
+   Plus the expected one-line OK output. The README does NOT inline torch/jax import statements anymore — they live in =scripts/thesis-smoke-test.py= and are surfaced via its =--help=.
+   Estimated time: ~30 min.
+
+** TODO P5.2 Add Gate 0 check: README references the script by name
+   :PROPERTIES:
+   :ID:       P5.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P5.1
+   :END:
+   DoD: =scripts/validate-static.sh= grep-verifies that =README.md= contains the literal =scripts/thesis-smoke-test.py=. Intentionally break it (edit the README to remove the reference) to confirm Gate 0 fires.
+   Estimated time: ~15 min.
+
+** TODO P5.3 Add a "Host contract" section to README
+   :PROPERTIES:
+   :ID:       P5.3
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P1.3 P5.1
+   :END:
+   DoD: README has a short section (≤ 250 words) stating the host floors + rootfs isolation boundary and pointing at =scripts/validate-host-contract.sh= and =scripts/validate-rootfs-isolation.sh=. No duplication of rationale — the rationale lives in =DESIGN.md=.
+
+** TODO P5.4 Retrospective
+   :PROPERTIES:
+   :ID:       P5.4
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P5.3 P4.1
+   :END:
+   ≥ 3 bullets under =* Retrospective= covering:
+   - Which base images surprised us (anything that should have passed but contract-rejected, or vice versa)?
+   - Did the contract floor need tightening after the first run? If yes, update DESIGN.md.
+   - GPU passthrough on the chosen runner shape — first-try success or surprises?
+   - Sentinel-string churn during build-out: any sentinels that needed updating mid-workstream?
+
+* Retrospective
+(fill in during P5.4)
+
+* Notes
+Free-form scratchpad. Move stable facts into design.md or DESIGN.md when settled.
+- The thesis statement in =README.md= is the contract this workstream tests. If the README's thesis claim ever changes, this workstream's smoke test + contract must change in the same PR.
+- =contract-rejected= is a **pass**, not a fail. Alpine landing in that bucket is the matrix doing its job. Do not "fix" it by relaxing the contract.
+- =python -m pip install torch= deliberately stays as an expert hatch (=.workstream/uv-in-rootfs/= §2). The matrix's negative tests prove Gate 10b catches it; they do NOT prove =python -m pip= is blocked at the interpreter.
