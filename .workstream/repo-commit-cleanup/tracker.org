@@ -1,0 +1,140 @@
+#+TITLE: Repo Commit Cleanup — Task Tracker
+#+STARTUP: overview logdone
+#+TODO: TODO(t) IN-PROGRESS(i!) BLOCKED(b@/!) | DONE(d!) WONTFIX(w@/!)
+#+PROPERTY: header-args :eval no
+#+FILETAGS: :workstream:repo-commit-cleanup:
+
+* Overview
+This tracker drives the work described in [[file:design.md][design.md]].
+Read design.md §6 and AGENTS.md before claiming a task.
+
+Conventions:
+- Each task has :OWNER:, :STARTED:, :FINISHED:, :DEPENDS: properties.
+- Logs go under nested =** Log= sections or in =artifacts/=.
+- The workstream is for cleanup and commits only; feature work belongs elsewhere.
+
+* Decisions
+
+** Commit grouping
+   :PROPERTIES:
+   :DECIDED_BY: Codex
+   :DECIDED_ON: 2026-05-19T21:17:35Z
+   :END:
+   - Planned groups:
+     1. NVIDIA driver bind fix required to keep Gate 0 green under pre-commit stashing.
+     2. Repo hygiene and agent/delegation config.
+     3. Spack bootstrap env and validation repair.
+     4. uv-overlay workstream reconciliation.
+     5. Testable-thesis planning workstream.
+     6. Commit-cleanup ledger.
+
+** Local-only handling
+   :PROPERTIES:
+   :DECIDED_BY: Codex
+   :DECIDED_ON: 2026-05-19T21:17:35Z
+   :END:
+   - Do not commit =.claude/settings.local.json=; it contains local permission state.
+   - Preserve =draccus-core-thesis.txt= as an artifact input for the thesis-testable workstream rather than as a repo-root source file.
+
+** Validation limitation
+   :PROPERTIES:
+   :DECIDED_BY: Codex
+   :DECIDED_ON: 2026-05-19T21:24:00Z
+   :END:
+   - None for Gate 0. Initial run failed at optional =draccus-probe= because host NVIDIA driver discovery bound the whole host system library directory, shadowing rootfs glibc. Fixed by binding individual NVIDIA SONAME files in =lib/draccus-nvidia-mounts.sh=.
+   - =./scripts/validate-static.sh= exits 0 after the fix.
+
+* Phase 0 — Snapshot and classify :phase0:
+** DONE P0.1 Capture dirty tree and classify paths
+   :PROPERTIES:
+   :ID:       P0.1
+   :OWNER:    Codex
+   :STARTED:  2026-05-19T21:17:35Z
+   :FINISHED: 2026-05-19T21:17:35Z
+   :DEPENDS:
+   :END:
+   DoD: status and untracked snapshots are saved; top-level path groups are recorded.
+   ** Artifacts
+   - =artifacts/p0-status-before.txt=
+   - =artifacts/p0-untracked-before.txt=
+   - =artifacts/p0-du-before.txt=
+   ** Log
+   - Classified source/config candidates: =.agents/=, =.claude/settings.json=, =.cursor/=, =.trae/COCO_MODELS.md=, =docs/coco-cursor-delegation.md=, =scripts/coco-probe-models.sh=, =scripts/uv_overrides.txt=.
+   - Classified workstream evidence/plans: =.workstream/repo-hygiene/=, =.workstream/spack-envs-bootstrap/=, =.workstream/thesis-testable/=, and this cleanup ledger.
+   - Classified local-only: =.claude/settings.local.json=.
+   - Classified scratch transcript: =draccus-core-thesis.txt=, to preserve under =.workstream/thesis-testable/artifacts/=.
+
+* Phase 1 — Tidy local-only artifacts :phase1:
+** DONE P1.1 Ignore local settings and relocate scratch transcript
+   :PROPERTIES:
+   :ID:       P1.1
+   :OWNER:    Codex
+   :STARTED:  2026-05-19T21:17:35Z
+   :FINISHED: 2026-05-19T21:18:30Z
+   :DEPENDS:  P0.1
+   :END:
+   DoD: local-only files no longer appear as repo-root source candidates.
+   ** Artifacts
+   - =../thesis-testable/artifacts/source-chat-draccus-core-thesis.txt=
+   ** Log
+   - Added =.claude/settings.local.json= to =.gitignore=.
+   - Moved the raw thesis transcript out of repo root and into the thesis-testable workstream artifacts.
+   - Added a default ignore for =.workstream/*/artifacts/*=, with exceptions for =.gitkeep= and =README.md=, so large command logs remain local unless intentionally force-added.
+
+* Phase 2 — Validate :phase2:
+** DONE P2.1 Run mandatory static validation
+   :PROPERTIES:
+   :ID:       P2.1
+   :OWNER:    Codex
+   :STARTED:  2026-05-19T21:18:30Z
+   :FINISHED: 2026-05-19T21:24:00Z
+   :DEPENDS:  P1.1
+   :END:
+   DoD: =./scripts/validate-static.sh= output saved under =artifacts/=; limitation recorded if non-zero.
+   ** Artifacts
+   - =artifacts/p2-validate-static.log=
+   ** Log
+   - First run reproduced the =GLIBC_2.38= namespace failure.
+   - Root cause: =lib/draccus-nvidia-mounts.sh= used =ldconfig= results to bind a whole host system library directory containing NVIDIA driver libs; this shadowed rootfs glibc.
+   - Fix: bind only =libcuda.so.1=, =libnvidia-ml.so.1=, and =libcudadebugger.so.1= file targets.
+   - Final run: =Passed: 78=, =Failed: 0=.
+
+* Phase 3 — Commit groups :phase3:
+** DONE P3.1 Create structured commits
+   :PROPERTIES:
+   :ID:       P3.1
+   :OWNER:    Codex
+   :STARTED:  2026-05-19T21:24:00Z
+   :FINISHED: 2026-05-19T21:31:30Z
+   :DEPENDS:  P2.1
+   :END:
+   DoD: every planned commit group is committed with a narrow message.
+   ** Log
+   - =2c55835= =fix: bind nvidia driver libraries by soname=
+   - =9248d3b= =chore: track repo hygiene and agent config=
+   - =6436277= =fix: stabilize spack bootstrap validation=
+   - =79d3eb7= =docs: reconcile uv overlay workstream=
+   - =ced9b92= =docs: add testable thesis workstream=
+
+* Phase 4 — Final handoff :phase4:
+** DONE P4.1 Capture final clean status
+   :PROPERTIES:
+   :ID:       P4.1
+   :OWNER:    Codex
+   :STARTED:  2026-05-19T21:31:30Z
+   :FINISHED: 2026-05-19T21:31:30Z
+   :DEPENDS:  P3.1
+   :END:
+   DoD: final =git status --short= saved and clean, or intentional remaining state listed.
+   ** Artifacts
+   - =artifacts/p4-status-after.txt= (written after the cleanup ledger commit; ignored by default artifact policy)
+   ** Log
+   - Final status check is expected to be clean after this tracker commit; confirm before handoff.
+
+* Retrospective
+- Surprises: pre-commit stashes unstaged tracked files, so each commit must be self-validating against the staged snapshot.
+- Automate next time: keep workstream artifacts ignored by default and force-add only small indexes such as =artifacts/README.md=.
+- Doc gaps: =lib/draccus-nvidia-mounts.sh= needed an explicit note that file-level NVIDIA binds avoid host glibc shadowing.
+
+* Notes
+Free-form scratchpad. Promote stable facts if this cleanup reveals durable repo rules.
