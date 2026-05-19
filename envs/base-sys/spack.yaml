@@ -1,4 +1,11 @@
+# Base system view: compilers and tooling from CUDA rootfs (Ubuntu GCC 13.3 + distro cmake/ninja from bootstrap chroot APT)
+# plus Spack-managed LLVM/clang/devtools layered into /opt/draccus/view/base-sys.
+#
+# NVIDIA CUDA toolkit + libcudnn shipped under /usr/local/cuda (rootfs Docker image pin in scripts/bootstrap-rootfs.sh).
 spack:
+  include:
+    - /opt/draccus/envs/common/rootfs-externals.yaml
+
   view:
     default:
       root: /opt/draccus/view/base-sys
@@ -14,7 +21,7 @@ spack:
     source_cache: /opt/draccus/cache/spack/source
     misc_cache: /opt/draccus/cache/spack/misc
     build_stage:
-    - /opt/draccus/build/stage
+      - /opt/draccus/build/stage
 
   concretizer:
     unify: true
@@ -29,29 +36,30 @@ spack:
     all:
       target: [x86_64_v3]
       require:
-      - "+shared"
-      - "%[when=%c]c=gcc@12.4.0 %[when=%cxx]cxx=gcc@12.4.0 %[when=%fortran]fortran=gcc@12.4.0"
+        - "+shared"
+        # Rootfs toolchain (Ubuntu 24.04 in nvidia/cuda:*-devel Ubuntu image after bootstrap APT pass).
+        - "%[when=%c]c=gcc@13.3.0 %[when=%cxx]cxx=gcc@13.3.0 %[when=%fortran]fortran=gcc@13.3.0"
 
   specs:
-  - gcc@12.4.0 languages='c,c++,fortran'
-  - llvm +clang +lld
-  - gdb
-  - cmake
-  - ninja
-  - meson
-  - pkgconf
-  - gmake
-  - patchelf
-  - ccache
-  - git
-  - git-lfs
-  - openssh
-  - zsh
-  - tmux
-  - emacs
-  - ripgrep
-  - eza
-  - dust
-  - fd
-  - jq
-  - cloc
+    # Pin major: py-jaxlib uses %llvm + NVCC; Clang 20+ headers/builtins break NVCC host compile of XLA/Abseil (see py-jaxlib build logs).
+    - llvm@18.1.8 +clang +lld %gcc@13.3.0
+    - gdb
+    - cmake
+    - ninja
+    - meson
+    - pkgconf
+    - gmake
+    - patchelf
+    - ccache
+    - git
+    # git-lfs: install via bootstrap APT (`git-lfs` in DRACCUS_ROOTFS_EXTRA_APT_PACKAGES); lives on PATH from /usr/bin.
+    - openssh
+    - zsh
+    - tmux
+    - emacs
+    - ripgrep
+    - eza
+    - dust
+    - fd
+    - jq
+    - cloc

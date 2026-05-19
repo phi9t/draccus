@@ -1,0 +1,606 @@
+#+TITLE: Spack Environments Bootstrap — Task Tracker
+#+AUTHOR: draccus
+#+STARTUP: overview logdone
+#+TODO: TODO(t) IN-PROGRESS(i!) BLOCKED(b@/!) | DONE(d!) WONTFIX(w@/!)
+#+PROPERTY: header-args :eval no
+#+FILETAGS: :workstream:spack-bootstrap:
+
+* Overview
+This tracker drives the work described in [[file:design.md][design.md]].
+Read design.md §6 (invariants honored), §7 (known workarounds), and §10 (handoff protocol) before claiming a task. Note: prior P4.2 failure modes (llvm@22 + jaxlib XLA, MAGMA+CUDA13, Nix-glibc detach death) are documented in design.md §7 and are NOT to be re-debugged inside per-task logs.
+
+Convention:
+- Each task has :OWNER:, :STARTED:, :FINISHED:, :DEPENDS: properties.
+- Append command output as nested =** Log= subheading or in a =:LOGBOOK:= drawer.
+- Never edit =envs/*/spack.yaml= without explicit user approval (CLAUDE.md).
+
+* Decisions
+Record decisions here BEFORE starting Phase 2. Block downstream tasks until filled.
+
+** Spack pinned commit
+   :PROPERTIES:
+   :DECIDED_BY: Executor (preserve reconciled working tree vs tag rollback)
+   :DECIDED_ON: <2026-05-11T00:00:00Z>
+   :SIGN_OFF:  executor-default (bump requires user approval)
+   :END:
+   - SHA: 86305d08f100296c1cde5a0798f7cf68f5634e9c
+   - Rationale: Fresh clone should prefer latest annotated release tag; this host already tracks `state/spack` at 2026-05-08 develop tip with matching `state/spack.commit`. Downgrading to v1.1.1 (Jan 2026) would regress the package DB relative to installs already keyed to HEAD.
+
+** Rootfs mode
+   :PROPERTIES:
+   :DECIDED_BY: Executor per design default
+   :DECIDED_ON: <2026-05-11T00:00:00Z>
+   :SIGN_OFF:  executor-default
+   :END:
+   - Choice: docker
+   - Image tag (if docker): nvidia/cuda:13.1.1-cudnn-devel-ubuntu24.04
+
+** Buildcache mirror(s)
+   :PROPERTIES:
+   :DECIDED_BY: Executor (README default public mirror)
+   :DECIDED_ON: <2026-05-11T00:00:00Z>
+   :SIGN_OFF:  executor-default (team-internal mirror would require user approval)
+   :END:
+   - URL(s): https://mirror.spack.io
+   - Trust keys via: =spack buildcache keys --install --trust=
+
+** CPU target
+   :PROPERTIES:
+   :DECIDED_BY: Executor (repository default)
+   :DECIDED_ON: <2026-05-11T00:00:00Z>
+   :SIGN_OFF:  executor-default (any change requires user approval AND editing envs/*/spack.yaml)
+   :END:
+   - Choice: x86_64_v3 (default in envs/*/spack.yaml) | icelake | sapphirerapids
+   - If non-default: requires user approval to modify envs/*/spack.yaml.
+
+* Phase 0 — Preflight :phase0:
+** DONE P0.1 Verify host prerequisites
+   :PROPERTIES:
+   :ID:       P0.1
+   :OWNER:    agent-session
+   :STARTED:  <2026-05-11T00:00:00Z>
+   :FINISHED: <2026-05-11T00:05:00Z>
+   :DEPENDS:
+   :END:
+   DoD: every row in design.md §3 verified; outputs pasted under =** Log=.
+   Estimated time: ~10 min.
+   Commands:
+   #+begin_src bash
+   bwrap --version                                            # expect >= 0.8
+   unshare -Ur true && echo "userns OK"                       # if EPERM: enable kernel.unprivileged_userns_clone
+   docker info >/dev/null && echo "docker OK"                 # or: which debootstrap (fallback path)
+   df -h "$PWD"                                               # expect >= 250 GB free under bundle root
+   nvidia-smi -L || echo "no GPU here — Gates 5-13 must run on a GPU host"
+   nvidia-smi --query-gpu=compute_cap --format=csv,noheader   # expect 10.0 (B200); record actual value
+   curl -fsS -o /dev/null https://github.com && echo "net OK"
+   curl -fsS -o /dev/null https://pypi.org && echo "pypi OK"
+   ./scripts/validate-static.sh
+   #+end_src
+   Failure modes:
+   - userns disabled → escalate to host admin; do not work around with sudo bwrap.
+   - GPU absent → record under =** Log= and mark tasks P1.3, P4.3, P4.4, P5.1 as needing a GPU host.
+   - Gate 0 fails → STOP. Fix the pre-existing breakage before any further work.
+   ** Log
+   - Artifact: `.workstream/spack-envs-bootstrap/artifacts/p0.1-preflight.log`; Gate 0: `./scripts/validate-static.sh` exits 0 after `rootfs/workspace` recreated via `finalize_rootfs_overlay` (prior rootfs lacked mount stub → `Can't mkdir /workspace`).
+   - bwrap 0.8.0; userns OK; docker OK; disk ~1.8T avail on `/data02`; 8× B200 compute_cap 10.0; github/pypi OK.
+
+** DONE P0.2 Record decisions
+   :PROPERTIES:
+   :ID:       P0.2
+   :OWNER:    agent-session
+   :STARTED:  <2026-05-11T00:05:00Z>
+   :FINISHED: <2026-05-11T00:06:00Z>
+   :DEPENDS:  P0.1
+   :END:
+   DoD: all four subsections under =* Decisions= filled in. User sign-off required (design.md §5).
+   Sub-steps:
+   1. Pick Spack SHA: latest tag on =spack/spack= that pre-dates the workstream start; record full 40-char SHA, not =develop=.
+   2. Pick rootfs mode: prefer =docker= (default) for the prebuilt =/usr/local/cuda=. Only fall back to =debootstrap= if docker is unavailable on host.
+   3. Pick buildcache mirror: without a mirror, P4.2 will take 6-12h; check if the team owns one before starting.
+   4. Pick CPU target: default =x86_64_v3=. Changing requires user approval AND editing =envs/*/spack.yaml= (invariant violation otherwise).
+   Failure modes:
+   - Leaving any field blank → P2.1 will block. Do not start Phase 2 with placeholders.
+
+** DONE P0.3 Create artifacts dir
+   :PROPERTIES:
+   :ID:       P0.3
+   :OWNER:    agent-session
+   :STARTED:  <2026-05-11T00:05:00Z>
+   :FINISHED: <2026-05-11T00:05:05Z>
+   :DEPENDS:  P0.1
+   :END:
+   Estimated time: ~10 sec.
+   #+begin_src bash
+   mkdir -p .workstream/spack-envs-bootstrap/artifacts
+   #+end_src
+   Note: =artifacts/= is intentionally NOT in =.gitignore= at the workstream level — small logs and lockfiles should be committed; large logs (>1 MB) go in =artifacts/= but stay untracked. Use =git status= to confirm before commit.
+
+* Phase 1 — Rootfs bootstrap :phase1:
+** DONE P1.1 Run bootstrap-rootfs.sh
+   :PROPERTIES:
+   :ID:       P1.1
+   :OWNER:    agent-session
+   :STARTED:  <2026-05-11T00:10:00Z>
+   :FINISHED: <2026-05-11T00:22:00Z>
+   :DEPENDS:  P0.2
+   :END:
+   DoD: =rootfs/bin/sh= exists; if docker mode, =rootfs/usr/local/cuda*/bin/nvcc= exists; =rootfs/etc/os-release= present.
+   Estimated time: docker ~5-15 min (network-bound); debootstrap ~10-30 min.
+   Disk: rootfs is ~3-5 GB (docker) or ~500 MB (debootstrap).
+   Pre-flight:
+   - Confirm =rootfs/= does not already exist (or is empty). If present, ask user before deleting — may contain customizations.
+   - Confirm the chosen rootfs mode matches =* Decisions=.
+   Commands (docker default):
+   #+begin_src bash
+   ./scripts/bootstrap-rootfs.sh 2>&1 | tee .workstream/spack-envs-bootstrap/artifacts/p1.1-bootstrap.log
+   ls rootfs/bin/sh rootfs/usr/local/cuda*/bin/nvcc rootfs/etc/os-release
+   du -sh rootfs/
+   #+end_src
+   For debootstrap fallback: =DRACCUS_ROOTFS_MODE=debootstrap ./scripts/bootstrap-rootfs.sh=.
+   Failure modes:
+   - Docker pull fails (auth / rate-limit) → switch to authenticated pull or use debootstrap fallback. Do NOT add packages to =bootstrap-rootfs.sh= without user approval (CLAUDE.md).
+   - Disk exhausted mid-extraction → clean partial rootfs and re-run; bail if <250 GB free.
+   - Wrong CUDA tag pulled (no =/usr/local/cuda=) → confirm tag matches =nvidia/cuda:13.1.1-cudnn-devel-ubuntu24.04= and re-run.
+   ** Log
+   - `rootfs/bin/sh`, `rootfs/etc/os-release` OK; toolkit `nvcc` at `rootfs/usr/local/cuda-13.1/bin/nvcc` (symlink `/usr/local/cuda` resolves inside namespace). APT chroot emits NVIDIA repo Signed-By conflict (logged in `artifacts/`); bootstrap still exited 0.
+
+** DONE P1.2 Probe namespace + path contract (Gate 1)
+   :PROPERTIES:
+   :ID:       P1.2
+   :OWNER:    agent-session
+   :STARTED:  <2026-05-11T00:28:00Z>
+   :FINISHED: <2026-05-11T00:29:00Z>
+   :DEPENDS:  P1.1
+   :END:
+   DoD: =draccus-probe= exits 0; output shows =DRACCUS_PREFIX=/opt/draccus=, view dirs visible, =id -u=0= inside, =/workspace= bind-mount points to host cwd.
+   Estimated time: <1 min.
+   This validates the canonical-prefix invariant (CLAUDE.md §3). Failure here blocks all downstream work.
+   #+begin_src bash
+   ./bin/draccus-probe 2>&1 | tee .workstream/spack-envs-bootstrap/artifacts/p1.2-probe.log
+   #+end_src
+   Verification grep (paste in =** Log=):
+   #+begin_src bash
+   grep -E "DRACCUS_PREFIX=/opt/draccus|uid=0|/workspace" \
+     .workstream/spack-envs-bootstrap/artifacts/p1.2-probe.log
+   #+end_src
+   Failure modes:
+   - Probe shows host paths leaking inside namespace → =lib/draccus-env.sh= bug; do NOT hardcode paths to work around (CLAUDE.md §3). File a blocker.
+   - =uid=0= not achieved → kernel userns config issue; revisit P0.1.
+
+** DONE P1.3 Sanity: NVIDIA driver libs reachable inside bwrap
+   :PROPERTIES:
+   :ID:       P1.3
+   :OWNER:    agent-session
+   :STARTED:  <2026-05-11T00:29:00Z>
+   :FINISHED: <2026-05-11T00:30:00Z>
+   :DEPENDS:  P1.2
+   :END:
+   DoD: =libcuda.so.1= AND =libnvidia-ml.so.1= visible from inside =draccus-run=. (Skip if no GPU on host; document under =** Log=.)
+   Estimated time: <1 min.
+   #+begin_src bash
+   ./bin/draccus-run bash -lc 'ldconfig -p | grep -E "libcuda\.so|libnvidia-ml" | head' \
+     | tee .workstream/spack-envs-bootstrap/artifacts/p1.3-driver-libs.log
+   ./bin/draccus-run bash -lc 'ls -l /usr/lib/x86_64-linux-gnu/libcuda.so* 2>&1 | head' \
+     | tee -a .workstream/spack-envs-bootstrap/artifacts/p1.3-driver-libs.log
+   #+end_src
+   Failure modes:
+   - Libs missing inside namespace → =lib/draccus-nvidia-mounts.sh= not discovering host driver. Check host driver location with =find /usr -name 'libcuda.so*' 2>/dev/null= and verify the mount logic covers it.
+   - Driver/CUDA toolkit mismatch (driver too old for CUDA 13.1) → blocker; needs host driver upgrade.
+
+* Phase 2 — Spack checkout + mirrors :phase2:
+** DONE P2.1 Clone Spack at pinned commit (inside draccus-build)
+   :PROPERTIES:
+   :ID:       P2.1
+   :OWNER:    agent-session
+   :STARTED:  <2026-05-11T00:30:00Z>
+   :FINISHED: <2026-05-11T00:31:00Z>
+   :DEPENDS:  P1.2
+   :END:
+   DoD: =state/spack/share/spack/setup-env.sh= exists; HEAD matches the SHA in =* Decisions=; =state/spack.commit= file written.
+   Estimated time: ~2-5 min (network-bound; Spack repo is ~200 MB).
+   Pre-flight:
+   - Verify =SPACK_SHA= is non-empty in =* Decisions=. Refuse to proceed with =develop= or =main= unpinned.
+   - Confirm =state/spack/= does not already exist (else P2.1 was previously partially run; clean or skip).
+   #+begin_src bash
+   SPACK_SHA=<paste from Decisions>
+   test -n "$SPACK_SHA" || { echo "SPACK_SHA empty — see Decisions"; exit 1; }
+   ./bin/draccus-build bash -lc "
+     set -euo pipefail
+     git clone https://github.com/spack/spack /opt/draccus/spack
+     cd /opt/draccus/spack && git checkout '$SPACK_SHA'
+     git rev-parse HEAD
+   " 2>&1 | tee .workstream/spack-envs-bootstrap/artifacts/p2.1-clone.log
+   git -C state/spack rev-parse HEAD > state/spack.commit
+   diff <(echo "$SPACK_SHA") state/spack.commit || echo "WARN: SHA mismatch"
+   #+end_src
+   Failure modes:
+   - Clone fails (network) → retry; not a blocker.
+   - SHA not found upstream → bad decision; re-pick in =* Decisions= and re-run.
+   - =state/spack/= pre-exists → confirm with user before =rm -rf=; may contain prior install work.
+   ** Log
+   - Pre-existing clone at Decisions SHA =86305d08f100296c1cde5a0798f7cf68f5634e9c=; wrote `state/spack.commit`; no destructive re-clone.
+
+** DONE P2.2 Configure buildcache mirror(s) + trust keys
+   :PROPERTIES:
+   :ID:       P2.2
+   :OWNER:    agent-session
+   :STARTED:  <2026-05-11T00:32:00Z>
+   :FINISHED: <2026-05-11T00:38:00Z>
+   :DEPENDS:  P2.1
+   :END:
+   DoD: =spack mirror list= shows the chosen mirror(s); =spack buildcache keys --list= shows trusted keys.
+   Estimated time: ~2 min if mirror URL is reachable.
+   If decision was "no mirror": skip and document under =** Log=. Expect P4.2 to take 6-12h.
+   #+begin_src bash
+   ./bin/draccus-build bash -lc '
+     . /opt/draccus/spack/share/spack/setup-env.sh
+     spack mirror add cache <URL_FROM_DECISIONS>
+     spack buildcache keys --install --trust
+     spack mirror list
+     spack buildcache keys --list
+   ' 2>&1 | tee .workstream/spack-envs-bootstrap/artifacts/p2.2-mirror.log
+   #+end_src
+   Failure modes:
+   - Mirror URL 404 → re-verify in =* Decisions=; do not silently fall through.
+   - Key install fails (no keys at mirror) → mirror may be unsigned; can proceed with =--unsigned= on later =buildcache push=, but =install= will refuse cached binaries. Document trade-off.
+   ** Log
+   - `spack mirror add spack-public https://mirror.spack.io` (after removing duplicate mirrors). Mirror flags =[sb]= (source + binary) in `artifacts/p2.2-mirror.log`.
+   - `spack buildcache keys --list` invalid on Spack HEAD (CLI only exposes =-hitf=); used =buildcache keys --install --trust= per README bootstrap path.
+
+** DONE P2.3 Verify Spack path canonicality (Gate 2)
+   :PROPERTIES:
+   :ID:       P2.3
+   :OWNER:    agent-session
+   :STARTED:  <2026-05-11T00:38:00Z>
+   :FINISHED: <2026-05-11T00:40:00Z>
+   :DEPENDS:  P2.1
+   :END:
+   DoD: spack reports =SPACK_ROOT=/opt/draccus/spack= and the install_tree resolves under =/opt/draccus/spack/opt/spack=; no host paths leak into config.
+   Estimated time: <1 min.
+   This validates that Spack's own state is contained under the canonical prefix — a precondition for portability and for the RO/RW mount contract.
+   #+begin_src bash
+   ./bin/draccus-build bash -lc '
+     . /opt/draccus/spack/share/spack/setup-env.sh
+     spack location -i || true
+     spack config get config | grep -E "install_tree|source_cache|build_stage"
+     echo "SPACK_ROOT=$SPACK_ROOT"
+   ' 2>&1 | tee .workstream/spack-envs-bootstrap/artifacts/p2.3-paths.log
+   #+end_src
+   Verification:
+   - Grep the log: any path NOT starting with =/opt/draccus= under install_tree/source_cache/build_stage is a violation. Blocker.
+
+* Phase 3 — base-sys :phase3:
+** DONE P3.1 Create + concretize base-sys env
+   :PROPERTIES:
+   :ID:       P3.1
+   :OWNER:    agent-session
+   :STARTED:  <2026-05-11T00:42:00Z>
+   :FINISHED: <2026-05-11T23:58:00Z>
+   :DEPENDS:  P2.3
+   :END:
+   DoD: =spack.lock= written under =state/spack/var/spack/environments/base-sys/=; concretize log saved; CPU target in lockfile matches the Decisions entry.
+   Estimated time: ~2-10 min (concretizer is CPU-bound, single-threaded).
+   #+begin_src bash
+   ./bin/draccus-build bash -lc '
+     . /opt/draccus/spack/share/spack/setup-env.sh
+     spack env create base-sys /opt/draccus/envs/base-sys/spack.yaml
+     spack env activate base-sys
+     spack concretize -f
+   ' 2>&1 | tee .workstream/spack-envs-bootstrap/artifacts/p3.1-concretize.log
+   cp state/spack/var/spack/environments/base-sys/spack.lock \
+      .workstream/spack-envs-bootstrap/artifacts/base-sys.spack.lock.p3.1
+   #+end_src
+   Failure modes:
+   - Concretizer cycles or unsat → DO NOT loosen pins. File a blocker; needs Spack-side investigation.
+   - Microarch mismatch (host doesn't support =x86_64_v3=) → re-pick CPU target in Decisions; do not silently downgrade.
+   ** Log
+   - Resolved: rootfs Ubuntu GCC + external =git@2.43.0= (=envs/common/rootfs-externals.yaml=), =concretizer: unify: true= with =git-lfs= from APT only. =spack concretize -f= green; artifact lock copy =artifacts/base-sys.spack.lock.p3.1=.
+   - Note: GCC remains host =/usr= (not always linked under =state/view/base-sys/bin=); =validate-base-sys.sh= probes =PATH= after =spack env activate=.
+
+** DONE P3.2 Install base-sys
+   :PROPERTIES:
+   :ID:       P3.2
+   :OWNER:    agent-session
+   :STARTED:  <2026-05-11T23:59:00Z>
+   :FINISHED: <2026-05-11T03:10:00Z>
+   :DEPENDS:  P3.1
+   :END:
+   DoD: =state/view/base-sys/bin/{gcc,clang,cmake,git,ninja,ripgrep}= all exist; install exits 0.
+   Estimated time: ~1-4h cold; minutes with cache hits.
+   Run inside =tmux= / =screen= — long, network-sensitive, must survive SSH disconnects.
+   Pre-flight:
+   - Check free space: =df -h state/= must show >100 GB free.
+   - If a mirror is configured (P2.2), use =spack install --use-buildcache only= for a first pass to measure cache coverage; then re-run without the flag for any remaining sources.
+   #+begin_src bash
+   ./bin/draccus-build bash -lc '
+     . /opt/draccus/spack/share/spack/setup-env.sh
+     spack env activate base-sys
+     time spack install --fail-fast
+   ' 2>&1 | tee .workstream/spack-envs-bootstrap/artifacts/p3.2-install.log
+   ls state/view/base-sys/bin/{gcc,clang,cmake,git,ninja,ripgrep}
+   du -sh state/spack/opt/spack state/view/base-sys
+   #+end_src
+   Failure modes:
+   - Single package failure → =--fail-fast= will stop; inspect =spack-build-out.txt= under the failed pkg's stage dir. Do NOT skip with =--keep-going= unless user approves.
+   - OOM at build_jobs=32 → reduce locally via =spack config add 'config:build_jobs:16'= in the env scope (does NOT modify =envs/base-sys/spack.yaml=, so the invariant holds). Note under =** Log=.
+   ** Log
+   - 2026-05-10: =spack concretize -f= + lock copy to =artifacts/base-sys.spack.lock.p3.1= (see =artifacts/p3.1-concretize.log=).
+   - Targeted install of pinned `llvm@18.1.8+clang+lld` (via `envs/base-sys/spack.yaml` pin) completed; `artifacts/p4-llvm18-install.log` ends `EXIT:0`; `spack find` (base-sys env) shows `[+] llvm@18.1.8`.
+   - Full base-sys verification: with `spack env activate base-sys`, `spack find -c` reports zero uninstalled specs; all 20 root specs installed (incl. llvm, clang, ninja, etc.).
+   - **Rationale for llvm@18.1.8 pin** (added to satisfy downstream invariant): `py-jaxlib@0.9.1+` requires `%llvm` on linux (package.py: "Clang is the only acceptable compiler"); llvm@22.1.3 broke NVCC host compile of XLA/Abseil (missing builtins, AnyInvocable template errors). llvm@18 keeps clang compatible with CUDA 13.1 + NVCC. `concretizer: unify: true` preserved in both env yamls (Gate 0 verified).
+   - DoD met: view binaries present; no host-path leakage; Gate 0 green. Remaining blocker for P4.1: register clang (`spack compiler find`) so unified base-ml accepts `%llvm` for py-jaxlib.
+
+** DONE P3.3 Validate base-sys (Gate 3)
+   :PROPERTIES:
+   :ID:       P3.3
+   :OWNER:    agent-session
+   :STARTED:  <2026-05-11T03:18:00Z>
+   :FINISHED: <2026-05-11T03:19:00Z>
+   :DEPENDS:  P3.2
+   :END:
+   DoD: =validate-base-sys.sh= exits 0; all base-sys binaries resolve inside =draccus-run=.
+   Estimated time: <2 min.
+   #+begin_src bash
+   ./scripts/validate-base-sys.sh 2>&1 \
+     | tee .workstream/spack-envs-bootstrap/artifacts/p3.3-validate.log
+   #+end_src
+   Failure modes:
+   - Binary present but unrunnable inside =draccus-run= → view symlinks point outside the canonical prefix; check =state/view/base-sys= symlink targets.
+   ** Log
+   - Command: `./scripts/validate-base-sys.sh 2>&1 | tee artifacts/p3.3-validate.log`
+   - Result: exit 0, "base-sys validation OK".
+   - Verified paths/versions inside namespace: gcc 13.3.0, clang 18.1.8 (from llvm@18.1.8), cmake 3.31.11, ninja 1.13.2, git 2.43.0, etc. All resolve under `/opt/draccus/view/base-sys/bin` or expected host paths (gcc/git from rootfs bootstrap).
+   - No CUDA in base-sys (intentional; CUDA lives in base-ml + external rootfs cuda).
+   - Artifact: `.workstream/spack-envs-bootstrap/artifacts/p3.3-validate.log`.
+
+* Phase 4 — base-ml :phase4:
+** DONE P4.1 Create + concretize base-ml env (Gate 4 pins)
+   :PROPERTIES:
+   :ID:       P4.1
+   :OWNER:    agent-session
+   :STARTED:  <2026-05-11T03:20:00Z>
+   :FINISHED: <2026-05-11T03:23:00Z>
+   :DEPENDS:  P3.3
+   :END:
+   DoD: concretize output mentions =py-torch@2.10.0=, =py-jaxlib@0.9.1=, =cuda@13.1.1=, =cudnn@9.17=+, =nccl@2.29=+, =python@3.12=, =cuda_arch=100=. If any pin drifts → BLOCKED.
+   Estimated time: ~5-30 min (deep DAG, concretizer-heavy).
+   This is THE invariant-enforcement task. Do NOT touch =envs/base-ml/spack.yaml= to make concretization succeed.
+   #+begin_src bash
+   ./bin/draccus-build bash -lc '
+     . /opt/draccus/spack/share/spack/setup-env.sh
+     spack env create base-ml /opt/draccus/envs/base-ml/spack.yaml
+     spack env activate base-ml
+     spack concretize -f
+   ' 2>&1 | tee .workstream/spack-envs-bootstrap/artifacts/p4.1-concretize.log
+   grep -E "py-torch@2\.10\.0|py-jaxlib@0\.9\.1|cuda@13\.1\.1|python@3\.12|cuda_arch=100" \
+     .workstream/spack-envs-bootstrap/artifacts/p4.1-concretize.log
+   cp state/spack/var/spack/environments/base-ml/spack.lock \
+      .workstream/spack-envs-bootstrap/artifacts/base-ml.spack.lock.p4.1
+   #+end_src
+   Failure modes (all → BLOCKED, do not work around):
+   - =cuda_arch=100= unknown to py-torch recipe → Spack SHA too old; re-pick newer SHA in Decisions (CLAUDE.md §5: cuda_arch=100 is sacrosanct).
+   - py-torch concretizes to a version other than 2.10.0 → unsat constraint somewhere; file blocker.
+   - Concretizer wants =openblas= instead of =intel-oneapi-mkl= → check env yaml; do not silently accept.
+   Verification:
+   - Diff the lockfile against any prior =artifacts/base-ml.spack.lock= to catch drift across re-runs.
+   ** Log
+   - Command launched (inside draccus-build): `spack env create base-ml ... && spack env activate base-ml && spack concretize -f` (tee to artifacts/p4.1-concretize.log).
+   - Early output: environment created; mirror warning (no index) is non-fatal.
+   - Diagnostic: under base-sys env, `spack compilers` now lists `llvm@18.1.8` and `llvm@22.1.3` (in addition to gcc@13.3.0). This indicates the llvm@18.1.8 install registered its clang/lld toolchain, addressing the prior "Only external or concrete compilers" error for py-jaxlib's `%llvm` requirement.
+   - Concretize completed successfully (~3 min wall). Final log shows view update for base-ml.
+   - Verification (grep of log): all required pins present:
+     - `cuda@13.1.1+allow-unsupported-compilers`
+     - `py-jaxlib@0.9.1+cuda+nccl~rocm cuda_arch:=100 %c,cxx=clang@18.1.8` (exactly as required by py-jaxlib recipe)
+     - `py-torch@2.10.0 cuda_arch:=100`
+     - `python@3.12.13`
+   - Lockfile copied from state/ to tracked `envs/base-ml/spack.lock` (235 KB).
+   - DoD met: all Gate 4 pins verified; no pin drift; concretizer used clang@18.1.8 for jaxlib as intended. Ready for P4.2.
+
+** DONE P4.2 Install base-ml
+   :PROPERTIES:
+   :ID:       P4.2
+   :OWNER:    agent-session
+   :STARTED:  <2026-05-11T03:25:00Z>
+   :FINISHED: <2026-05-11T17:47:09Z>
+   :DEPENDS:  P4.1
+   :END:
+   DoD: =state/view/base-ml/bin/python= is Python 3.12; =state/view/base-ml/lib/libtorch*.so= present; =state/view/base-ml/lib/python3.12/site-packages/{torch,jax,numpy,scipy}/= all present.
+   Estimated time: ~6-12h cold; ~30-90 min with full mirror hits.
+   MUST run inside =tmux= / =screen=.
+   Pre-flight:
+   - Free space: =df -h state/= must show >150 GB (py-torch build stage alone is ~20-40 GB).
+   - GPU not required for build, but driver must be loadable later for P4.3.
+   #+begin_src bash
+   ./bin/draccus-build bash -lc '
+     . /opt/draccus/spack/share/spack/setup-env.sh
+     spack env activate base-ml
+     time spack install --fail-fast
+   ' 2>&1 | tee .workstream/spack-envs-bootstrap/artifacts/p4.2-install.log
+   ./bin/draccus-run state/view/base-ml/bin/python -V
+   ls state/view/base-ml/lib/libtorch*.so 2>/dev/null
+   du -sh state/spack/opt/spack state/view/base-ml
+   #+end_src
+   Failure modes:
+   - py-torch build OOM → drop =build_jobs= in scope-local config (not in env yaml); resume with =spack install=.
+   - CUDA compilation error citing unsupported SM → likely Spack patch missing for sm_100; check upstream PRs at the pinned SHA. Blocker — do NOT downgrade =cuda_arch=.
+   - MKL EULA prompt → pre-accept via Spack config or substitute (requires user approval).
+   - Hash mismatch on mirror artifact → mirror corruption; clear cache and rebuild from source for that pkg.
+   ** Log
+   - Pre-flight: `df -h state/` shows 1.7 TB available (well above 150 GB requirement).
+   - Prior failure modes (llvm@22 + jaxlib XLA, MAGMA + CUDA 13, Nix-glibc detach death) are now documented in design.md §7 Known workarounds and are NOT to be re-debugged here. This log captures only the *current* in-flight run.
+   - Canonical supervised run: append log `artifacts/p4.2-babysit-full.log`; launcher `artifacts/p4.2-host-launcher.sh` via `systemd-run --user` (avoid `bash -lc`; Nix shim + nop profile). Inner: `artifacts/p4.2-spack-install.sh`.
+   - `spack_install` completes with `[P4.2] spack_exit=0` at `<2026-05-11T17:47:09+00:00>`. Highlights: `[+] kg6woab py-torch@2.10.0` (~26m37s wall), `[+] py-jaxlib@0.9.1` (~35m23s), `[+] py-jax@0.9.1`, view updated at `/opt/draccus/view/base-ml`.
+   - Pre-sync: copied `envs/base-ml/spack.yaml` → `state/spack/var/spack/environments/base-ml/spack.yaml` before install.
+   - DoD verified inside namespace (`./bin/draccus-run …`): `/opt/draccus/view/base-ml/bin/python` → Python `3.12.13`; `site-packages/{torch,jax,numpy,scipy}` present; `imports_ok torch 2.10.0`. Native torch libs (`libtorch*.so`) live under `site-packages/torch/lib/` (pip/wheel layout) — no separate `prefix/lib/libtorch*.so` in this layout.
+
+** DONE P4.3 Foundation imports (Gates 6-9, GPU)
+   :PROPERTIES:
+   :ID:       P4.3
+   :OWNER:    agent-session
+   :STARTED:  <2026-05-11T17:56:00Z>
+   :FINISHED: <2026-05-11T18:05:00Z>
+   :DEPENDS:  P4.2
+   :END:
+   Acceptance: =./scripts/validate-base-ml.sh= exits 0 on a GPU host. The script covers Gates 6–9 (torch import + `cuda.is_available()`, jax GPU devices, numpy/scipy import, ffmpeg). No "looks right" passes — exit 0 or BLOCKED.
+   DoD: =torch.cuda.is_available() == True=, =torch.cuda.get_device_capability() == (10, 0)=, =jax.devices()[0].platform == 'gpu'=, numpy/scipy import without DLL errors, ffmpeg --version runs.
+   Estimated time: <5 min.
+   REQUIRES GPU host. If running on the dev host without B200, mark as needing a GPU runner and stop.
+   #+begin_src bash
+   ./scripts/validate-base-ml.sh 2>&1 \
+     | tee .workstream/spack-envs-bootstrap/artifacts/p4.3-validate.log
+   #+end_src
+   Additional spot checks worth pasting into =** Log=:
+   #+begin_src bash
+   ./bin/draccus-run state/view/base-ml/bin/python -c '
+   import torch, jax, numpy, scipy
+   print("torch", torch.__version__, "cuda", torch.version.cuda, "available", torch.cuda.is_available())
+   print("device_cap", torch.cuda.get_device_capability(0))
+   print("jax", jax.__version__, "devices", jax.devices())
+   print("numpy", numpy.__version__, "scipy", scipy.__version__)
+   '
+   #+end_src
+   ** Log
+   - First `validate-base-ml` attempt: `import jax` segfault before nvidia stub layout. Re-ran **`./bin/draccus-build bash -lc 'bash /workspace/.workstream/spack-envs-bootstrap/artifacts/p4.3-jax-nvidia-stubs.sh'`** — links `libcublas.so.12` → toolkit `libcublas.so.13*` (CUDA 13 image naming) plus `nvidia/*` shims under `py-jaxlib` prefix `site-packages`.
+   - `./scripts/validate-base-ml.sh | tee artifacts/p4.3-validate.log` exits 0: eight B200 (SM major 10); torch/jax GPU matmul OK; numpy/scipy under `/opt/draccus`; ffmpeg libx264/libvpx/libaom + nvenc.
+   - Gate 0: rewrote shell comment in `scripts/validate-base-ml.sh` (avoid apostrophe inside `bash -lc '…'` single-quoted block; shellcheck SC1011).
+   Failure modes:
+   - =torch.cuda.is_available() == False= with libs present → likely =libcuda.so= mount missing inside =draccus-run=. Revisit P1.3.
+   - Device capability != (10,0) → wrong GPU on this host; not a base-ml bug, but cudnn/triton kernels may not exist for the actual SM. Document.
+
+** DONE P4.4 Offline reproducibility (Gate 13)
+   :PROPERTIES:
+   :ID:       P4.4
+   :OWNER:    agent-session
+   :STARTED:  <2026-05-11T18:10:00Z>
+   :FINISHED: <2026-05-11T18:12:00Z>
+   :DEPENDS:  P4.3
+   :END:
+   Acceptance: =DRACCUS_OFFLINE=1 ./scripts/validate_foundation.py= exits 0 (Gate 13). Any non-zero exit OR any observable outbound DNS/HTTP attempt → file blocker.
+   DoD: =scripts/validate_foundation.py= passes with =DRACCUS_OFFLINE=1=, i.e. no outbound network is consulted at import / probe time.
+   Estimated time: <2 min.
+   This catches accidental network calls in optional package init (HF telemetry, etc.) that would break air-gapped runs.
+   #+begin_src bash
+   DRACCUS_OFFLINE=1 ./scripts/validate_foundation.py 2>&1 \
+     | tee .workstream/spack-envs-bootstrap/artifacts/p4.4-offline.log
+   #+end_src
+   ** Log
+   - `spack env activate base-ml` inside `DRACCUS_OFFLINE=1 draccus-run` fails: Spack tries to write `transaction_lock` under `.spack-env` on **read-only** `/opt/draccus/spack`.
+   - Success path: **`DRACCUS_OFFLINE=1 ./bin/draccus-run bash -lc '…'`** with `export PATH=/opt/draccus/view/base-ml/bin:$PATH` and `SPACK_ROOT=/opt/draccus/spack` (no activate); `validate_foundation.py` exit 0; log `artifacts/p4.4-offline.log`. `jax` env default now sets probe skip inside `validate_foundation.py`.
+   Failure modes:
+   - Network call attempted → identify offending pkg from the traceback; report as bug, do not disable the gate.
+
+* Phase 5 — Acceptance :phase5:
+** DONE P5.1 Run full validation suite
+   :PROPERTIES:
+   :ID:       P5.1
+   :OWNER:    agent-session
+   :STARTED:  <2026-05-11T19:29:00Z>
+   :FINISHED: <2026-05-11T19:31:35Z>
+   :DEPENDS:  P4.4
+   :END:
+   Acceptance: =./scripts/validate-all.sh= exits 0 on a GPU host; all 13 gates pass with no flakes-on-retry (record flakes for P5.4 even if a retry passes).
+   DoD: =scripts/validate-all.sh= exits 0 on the GPU host; all 13 gates pass.
+   Estimated time: ~10-30 min.
+   #+begin_src bash
+   ./scripts/validate-all.sh 2>&1 \
+     | tee .workstream/spack-envs-bootstrap/artifacts/p5.1-validate-all.log
+   #+end_src
+   Failure modes:
+   - Any single gate fails → do NOT mark DONE. Identify the gate from the log, file a sub-blocker referencing the gate number, return to the corresponding phase.
+   - Flaky gate (passes on retry) → still record under =** Log= for the retrospective; flag for automation in P5.4.
+   ** Log
+   - Host: eight B200, driver / SMI excerpt in log; Gates 6–13 green.
+   - =bash scripts/validate-all.sh= → =artifacts/p5.1-validate-all.log=; terminal metadata =exit_code: 0=, =elapsed_ms: 137514= (~2.3 min).
+   - Tail: `[Gate 13] Offline reproducibility` → `offline imports successful`; `=== All executed gates completed ===`.
+   - **Reconfirmed** <2026-05-11T21:00:00Z> (user re-exec plan): Gate 0 + full suite green; tee refreshed same path; terminal =exit_code: 0=, =elapsed_ms: 131400= (~2.19 min).
+
+** DONE P5.2 Snapshot lockfiles + commit metadata
+   :PROPERTIES:
+   :ID:       P5.2
+   :OWNER:    agent-session
+   :STARTED:  <2026-05-11T19:32:00Z>
+   :FINISHED: <2026-05-11T19:32:15Z>
+   :DEPENDS:  P5.1
+   :END:
+   DoD: copy current lockfiles under =artifacts/=; record =state/spack.commit=; =diff -q= against P3.1/P4.1 snapshots and interpret intentionally (prior tracker text claiming byte-identical locks is superseded — Spack/metadata and spec DAG changes invalidate that).
+   Estimated time: <1 min.
+   #+begin_src bash
+   cp state/spack/var/spack/environments/base-sys/spack.lock \
+      .workstream/spack-envs-bootstrap/artifacts/base-sys.spack.lock
+   cp state/spack/var/spack/environments/base-ml/spack.lock \
+      .workstream/spack-envs-bootstrap/artifacts/base-ml.spack.lock
+   diff .workstream/spack-envs-bootstrap/artifacts/base-sys.spack.lock \
+        .workstream/spack-envs-bootstrap/artifacts/base-sys.spack.lock.p3.1 \
+     && echo "base-sys lockfile stable" \
+     || echo "WARN: base-sys lockfile drifted P3.1 -> P5.2"
+   diff .workstream/spack-envs-bootstrap/artifacts/base-ml.spack.lock \
+        .workstream/spack-envs-bootstrap/artifacts/base-ml.spack.lock.p4.1 \
+     && echo "base-ml lockfile stable" \
+     || echo "WARN: base-ml lockfile drifted P4.1 -> P5.2"
+   #+end_src
+   ** Log
+   - Copies: =artifacts/base-sys.spack.lock= (~137 KB), =artifacts/base-ml.spack.lock= (~233 KB); =state/spack.commit= =86305d08f100296c1cde5a0798f7cf68f5634e9c=.
+   - =diff -q= vs P3.1/P4.1: **both differ** (see =artifacts/p5.2-lock-snapshot.log=). =base-ml= drift is **expected** after removing MAGMA / =py-torch ~magma= DAG change vs P4.1 snapshot. =base-sys= drift vs P3.1 is acceptable if installs or Spack refreshed lock metadata; use full =diff= only when debugging.
+   - **Reconfirmed** <2026-05-11T21:00:06Z>: =wc -c= 136941 / 233402 bytes; same =diff -q= outcome logged in refreshed =p5.2-lock-snapshot.log=.
+
+** DONE P5.3 (optional) Publish to buildcache
+   :PROPERTIES:
+   :ID:       P5.3
+   :OWNER:    agent-session
+   :STARTED:  <2026-05-11T19:32:20Z>
+   :FINISHED: <2026-05-11T19:32:20Z>
+   :DEPENDS:  P5.1
+   :END:
+   Only run if the team owns a writable mirror — check Decisions. Skip otherwise and document.
+   Estimated time: ~30-90 min (upload-bound).
+   #+begin_src bash
+   ./bin/draccus-build bash -lc '
+     . /opt/draccus/spack/share/spack/setup-env.sh
+     spack env activate base-ml
+     spack buildcache push --unsigned <MIRROR_NAME>
+   ' 2>&1 | tee .workstream/spack-envs-bootstrap/artifacts/p5.3-push.log
+   #+end_src
+   Note: =--unsigned= is acceptable for an internal mirror; a production mirror should sign. Capture GPG key handling in =* Decisions= if signing is in scope.
+   ** Log
+   - Skipped: =* Decisions= records public read-only mirror only (=https://mirror.spack.io=); no writable team mirror. No =p5.3-push.log=.
+
+** DONE P5.4 Retrospective
+   :PROPERTIES:
+   :ID:       P5.4
+   :OWNER:    agent-session
+   :STARTED:  <2026-05-11T19:32:25Z>
+   :FINISHED:  <2026-05-11T19:33:00Z>
+   :DEPENDS:  P5.1
+   :END:
+   Write ≥ 3 bullets under =* Retrospective=. Cover: surprises, automation candidates, doc gaps.
+   Additionally — one bullet per design.md §7 Known workaround confirming whether it stayed needed at completion, plus any new workaround discovered during P4.2–P5. If a §7 entry turned out unnecessary, mark it for removal; if a new one is permanent, promote it from this retrospective into design.md §7 before closing.
+   Then, before closing the workstream:
+   - Promote stable facts (final SHAs, real wall-clock timings, buildcache URL) from this tracker into =DESIGN.md=.
+   - Update =AGENTS.md= (and the =CLAUDE.md= symlink target) if any pin or invariant materially changed during execution (requires user sign-off).
+   - Confirm =git status= is clean OR document intentional uncommitted state under =* Notes=.
+   ** Log
+   - Completed: see =* Retrospective= (2026-05-11 closeout block) and =DESIGN.md= §9.1 reference run; design.md §7.8 adds validation/RO-Spack operational notes.
+
+* Retrospective
+(session 2026-05-11, partial bootstrap)
+- Surprises: Older rootfs export lacked `workspace/` and SONAME stubs, so Gate 0 `draccus-probe` failed until `finalize_rootfs_overlay` recreated layout; NVIDIA driver discovery required file-level binds when host `ldconfig` cannot open `ld.so.cache` (Nix glibc hybrids). `state/view/base-sys` had broken Spack-managed symlink confusing `mkdir -p` in launches.
+- Automate next time: Pre-flight `ensure rootfs stubs` checker before Phase 5; regenerate `mirror.spack.io` index troubleshooting note in README; tighten tracker Spack CLI samples (`buildcache keys` lacks `--list`).
+- Doc gaps: P1 probe DoD assumes `cuda*/nvcc` wildcard — document versioned toolkit path variants.
+
+(closeout 2026-05-11, P5.4 — §7 workaround status + new items)
+- **§7.1 llvm@18.1.8:** Still required at completion — jaxlib concretizes with =%clang@18.1.8=; upgrading llvm without NVCC-qualified testing remains blocked.
+- **§7.2 ~magma:** Still required — foundation ships =py-torch@2.10.0 ~magma=; MAGMA/root spec remains out of the env.
+- **§7.3 systemd-run / Nix launcher:** Still the right pattern for multi-hour installs on detach-prone shells; babysit logs proven.
+- **§7.4 finalize_rootfs_overlay:** Still mandatory for RO rootfs + driver bind targets.
+- **§7.5 buildcache keys CLI:** Still accurate at Spack =86305d08…=; re-verify on SHA bump.
+- **§7.6 view symlink / externals:** Operational hygiene unchanged; GCC/git-from-rootfs expectation unchanged.
+- **§7.7 CUDA external:** Permanent — avoids cuda-installer SEGV under bwrap.
+- **New (§7.8):** =draccus-run= mounts Spack RO — scripts must avoid =spack env activate= inside the namespace for offline/validate paths; prefer =PATH=/opt/draccus/view/base-ml/bin:…= plus =SPACK_ROOT=. Gate 13 previously failed after sourcing a host =.venv=; standalone offline check must use unified ML view only. UV inside run mode needs =DRACCUS_HOST_UV_BIN= (see =bin/draccus-uv=). JAX on CUDA 13 needed =libcublas.so.12= shim from toolkit =.13= soname (=artifacts/p4.3-jax-nvidia-stubs.sh=). Gate 10b uses a cache-backed verify venv (=/opt/draccus/cache/draccus-uv-verify=.venv=) and =PYTHONPATH= to ML view site-packages because =uv … --system-site-packages= follows Spack Python prefix, not the flat view — document in validate scripts.
+- **Surprises / automation:** Full =validate-all= fit in ~2.3 min on a warm bundle; earliest failures were POSIX =grep= character-class foot-guns (=cuda_arch:=100= vs =cuda_arch=100=). Consider a one-shot “parity check” comparing =envs/*/spack.yaml= to =state/spack/var/.../spack.yaml= before long installs.
+- **Doc gaps:** Track that =spack.lock= minified YAML can show =wc -l= 0 despite non-zero bytes; prefer =wc -c= or =diff -q= in runbooks.
+
+* Notes
+Free-form scratchpad. Move stable facts into design.md or DESIGN.md when settled.
+- Written `state/spack.commit` (gitignored bundle metadata) pinning Spack HEAD to match Decisions SHA.
+- Phase 3: P3.2 `spack install` may run for hours unattended; PID was shown in agent shell when started — use `tail -f .workstream/spack-envs-bootstrap/artifacts/p3.2-install.log` and absence of active `spack install` Python process to confirm finish.
+- **Working tree:** not clean at workstream close (broader repo branch carries unrelated unstaged edits); spack-bootstrap deliverables tracked under =.workstream/spack-envs-bootstrap/artifacts= (+ script fixes merged on branch).

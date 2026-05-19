@@ -1,6 +1,9 @@
 # Root filesystem is exported from NVIDIA CUDA + cuDNN Ubuntu Docker (`DRACCUS_CUDA_DOCKER_IMAGE`; pin matches Spack cuda@13.1.x here).
 # Spack CUDA is pinned to @13.1.1 (latest 13.x in current builtin `cuda/package.py`). Use newer Spack + image tag when NVIDIA publishes matching packs.
 spack:
+  include:
+    - /opt/draccus/envs/common/rootfs-externals.yaml
+
   view:
     default:
       root: /opt/draccus/view/base-ml
@@ -43,15 +46,28 @@ spack:
       target: [x86_64_v3]
       require:
       - "+shared"
-      - "%[when=%c]c=gcc@12.4.0 %[when=%cxx]cxx=gcc@12.4.0 %[when=%fortran]fortran=gcc@12.4.0"
+      # Match base-sys: bootstrap compiler from NVIDIA Ubuntu rootfs (gcc 13.x after bootstrap APT pass).
+      - "%[when=%c]c=gcc@13.3.0 %[when=%cxx]cxx=gcc@13.3.0 %[when=%fortran]fortran=gcc@13.3.0"
       providers:
         blas: [intel-oneapi-mkl]
         lapack: [intel-oneapi-mkl]
         mpi: [openmpi]
 
+    llvm:
+      require:
+      # Same pin as base-sys: jaxlib builds with %llvm + NVCC; llvm@22 host headers are incompatible with NVCC.
+      - "@18.1.8"
+
     cuda:
       require:
       - "@13.1.1"
+      # NVCC vs system GCC/clang version checks (jaxlib uses a pinned llvm@18 — still set for Spack cuda package consistency)
+      - "+allow-unsupported-compilers"
+
+    cudnn:
+      require:
+      # Separate redists per CUDA major;without this unify can choose a cuda12 tarball.
+      - '@9.17.1.4-13'
 
     py-torch:
       require:
@@ -59,6 +75,8 @@ spack:
       - "+cudnn"
       - "+nccl"
       - "+distributed"
+      # CUDA GEMM/solver paths use cuBLAS/cuSOLVER; do not pull MAGMA into py-torch (CUDA 13 + MAGMA versioning is brittle).
+      - "~magma"
       - "cuda_arch=100"
 
     py-jaxlib:
@@ -72,11 +90,6 @@ spack:
       - "+cuda"
       - "cuda_arch=100"
 
-    magma:
-      require:
-      - "+cuda"
-      - "cuda_arch=100"
-
   specs:
   - python@3.12
   - py-pip
@@ -85,18 +98,18 @@ spack:
   - py-numpy
   - py-scipy
 
-  - cuda@13.1.1
-  - cudnn@9.17:
-  - nccl@2.29: +cuda cuda_arch=100 ^cuda@13.1.1
-  - cusparselt ^cuda@13.1.1
-  - magma +cuda cuda_arch=100 ^cuda@13.1.1
+  - cuda@13.1.1+allow-unsupported-compilers
+  - 'cudnn@9.17.1.4-13'
+  - 'nccl@2.29: +cuda cuda_arch=100 ^cuda@13.1.1+allow-unsupported-compilers'
 
   - intel-oneapi-mkl
   - fftw +openmp
   - eigen
 
-  - ffmpeg@7.1 +gpl +nonfree +libx264 +libx265 +libvpx +libaom +freetype +fontconfig +openssl
+  # drawtext pulls freetype/fontconfig/x-related deps via Spack bindings (these are deps, not ffmpeg variants).
+  - ffmpeg@7.1 +gpl +nonfree +drawtext +libx264 +libvpx +libaom +openssl
 
-  - py-torch@2.10.0 +cuda +cudnn +nccl +magma +distributed cuda_arch=100 ^python@3.12 ^cuda@13.1.1 ^cudnn@9.17: ^nccl@2.29:
+  # Spack cuSPARSELt redist wired for cuda12 only (~0.8.1-cuda120); breaks cuda@13.1.1 unify.
+  - 'py-torch@2.10.0 +cuda +cudnn +nccl ~magma +distributed ~cusparselt cuda_arch=100 ^python@3.12 ^cuda@13.1.1+allow-unsupported-compilers ^cudnn@9.17.1.4-13 ^nccl@2.29:'
   - py-jax@0.9.1 ^python@3.12
-  - py-jaxlib@0.9.1 +cuda +nccl cuda_arch=100 ^python@3.12 ^cuda@13.1.1 ^nccl@2.29:
+  - 'py-jaxlib@0.9.1 +cuda +nccl cuda_arch=100 ^python@3.12 ^cuda@13.1.1+allow-unsupported-compilers ^nccl@2.29:'

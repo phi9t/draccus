@@ -1,0 +1,30 @@
+packages:
+  # GCC from the NVIDIA CUDA Ubuntu rootfs (after bootstrap APT: gfortran-13 + build tools).
+  # Verified via `spack compiler find /usr/bin`; keep in sync when changing bootstrap packages.
+  gcc:
+    buildable: false
+    externals:
+      - spec: gcc@13.3.0 languages:='c,c++,fortran'
+        prefix: /usr
+        extra_attributes:
+          compilers:
+            c: /usr/bin/gcc
+            cxx: /usr/bin/g++
+            fortran: /usr/bin/gfortran-13
+
+  # Matches Ubuntu-packaged git (`git --version` after bootstrap APT). Keeps unify:true by
+  # avoiding a Spack-built git↔pcre2 subgraph that clashes with LLVM and other dependents.
+  git:
+    buildable: false
+    externals:
+      - spec: git@2.43.0
+        prefix: /usr
+
+  # CUDA toolkit exported from the rootfs NVIDIA image (bootstrap-rootfs/docker). Matches base-ml pin
+  # cuda@13.1.1+allow-unsupported-compilers. Using this external avoids NVIDIA's bundled
+  # ./cuda-installer, which SEGVs under Draccus' bubblewrap+userns launcher (validated 2026-05).
+  cuda:
+    buildable: false
+    externals:
+      - spec: cuda@13.1.1+allow-unsupported-compilers
+        prefix: /usr/local/cuda

@@ -9,6 +9,8 @@
 
 shopt -s nocasematch
 
+# These variables are the sourced-library contract consumed by bin/draccus-run/build.
+# shellcheck disable=SC2034
 if [[ ! "${DRACCUS_USE_DOCKER_CUDA:-1}" =~ ^(0|false|no)$ ]]; then
   if [[ -x "${DRACCUS_STATE}/view/base-ml/bin/nvcc" ]]; then
     DRACCUS_RESOLVED_CUDA_HOME="/opt/draccus/view/base-ml"
@@ -44,7 +46,7 @@ for nvcc_host in "${_nvcc_paths[@]}"; do
 
   lib_dir_inner="/${cuda_home}/lib64"
   if [[ -d "${ROOTFS_CANON}${lib_dir_inner}" ]]; then
-    DRACCUS_BWRAP_CUDA_LD_EXTRA="${lib_dir_inner#/}:${DRACCUS_BWRAP_CUDA_LD_EXTRA}"
+    DRACCUS_BWRAP_CUDA_LD_EXTRA="${lib_dir_inner}:${DRACCUS_BWRAP_CUDA_LD_EXTRA}"
   fi
 done
 

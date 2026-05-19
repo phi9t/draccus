@@ -164,7 +164,10 @@ DRACCUS_OFFLINE=1 ./bin/draccus-run bash -lc 'python /workspace/scripts/validate
 2. **`spack env activate` fails with "Read-only file system"**
    Expected. Spack is mounted read-only in `draccus-run` / `draccus-shell`. You do not need Spack shell activation for daily work -- `PATH` already points at the ML view. Use **`draccus-build`** when Spack must write (install, concretize, etc.).
 
-3. **Deeper design and bootstrap history**
+3. **`sys.path` shows long `__spack_path_placeholder__` paths**
+   Normal. Spack pads install prefixes for binary relocation (`padded_length: 128`). The Python binary has its real Spack prefix baked in, so `sys.path` includes those padded paths. What matters: `/opt/draccus/view/base-ml/lib/python3.12/site-packages` is always on `sys.path`, and that is where `import torch` / `jax` resolve from. You never interact with the padded paths directly.
+
+4. **Deeper design and bootstrap history**
    - **`DESIGN.md`** -- architecture and validation gates.
    - **`README.md`** -- canonical commands and invariants.
    - **`.workstream/spack-envs-bootstrap/`** -- how the pinned Spack environments were bootstrapped on a reference host (logs and lessons learned).

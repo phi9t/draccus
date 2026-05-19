@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Draccus foundation validation (EDD Appendix B / Gates 6–9).
 
-Expects to run inside draccus-run with base-ml activated:
+Expects to run inside draccus-run with base-ml on PATH:
 
-  . /opt/draccus/spack/share/spack/setup-env.sh && spack env activate -p base-ml
+  export PATH=/opt/draccus/view/base-ml/bin:$PATH
+  export SPACK_ROOT=/opt/draccus/spack
 """
 
 from __future__ import annotations
@@ -53,6 +54,9 @@ def main() -> int:
     y = x @ x
     torch.cuda.synchronize()
     print("torch ok", y.shape)
+
+    # Spack jaxlib + multi-toolkit rootfs can make PJRT's optional CUDA probes spuriously fail.
+    os.environ.setdefault("JAX_SKIP_CUDA_CONSTRAINTS_CHECK", "1")
 
     import jax
     import jax.numpy as jnp

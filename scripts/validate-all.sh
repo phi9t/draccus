@@ -59,7 +59,7 @@ echo "[Gate 4] base-ml concretization & pin verification"
   grep -E "py-jaxlib@0\.9\.1" /opt/draccus/envs/base-ml/concrete.txt
   grep -E "cuda@13\.1\.1" /opt/draccus/envs/base-ml/concrete.txt
   grep -E "python@3\.12" /opt/draccus/envs/base-ml/concrete.txt
-  grep -E "cuda_arch=100" /opt/draccus/envs/base-ml/concrete.txt
+  grep -E "cuda_arch:?=100" /opt/draccus/envs/base-ml/concrete.txt
   echo "  All required pins present and no duplicate roots detected"
 '
 echo
@@ -94,8 +94,8 @@ if [[ "${RUN_CUDA_EXT_TEST:-0}" == "1" ]]; then
   echo "[Gate 11] CUDA extension ABI test (flash-attn)"
   "$DRACCUS_BUNDLE/bin/draccus-run" bash -lc '
     set -euo pipefail
-    . /opt/draccus/spack/share/spack/setup-env.sh
-    spack env activate -p base-ml
+    export PATH="/opt/draccus/view/base-ml/bin:${PATH}"
+    export SPACK_ROOT=/opt/draccus/spack
     source .venv/bin/activate 2>/dev/null || true
     export CUDA_HOME=/opt/draccus/view/base-ml
     export CMAKE_PREFIX_PATH=/opt/draccus/view/base-ml
@@ -122,9 +122,9 @@ echo
 echo "[Gate 13] Offline reproducibility"
 DRACCUS_OFFLINE=1 "$DRACCUS_BUNDLE/bin/draccus-offline" bash -lc '
   set -euo pipefail
-  . /opt/draccus/spack/share/spack/setup-env.sh
-  spack env activate -p base-ml
-  source .venv/bin/activate 2>/dev/null || true
+  export PATH="/opt/draccus/view/base-ml/bin:${PATH}"
+  export SPACK_ROOT=/opt/draccus/spack
+  export JAX_SKIP_CUDA_CONSTRAINTS_CHECK="${JAX_SKIP_CUDA_CONSTRAINTS_CHECK:-1}"
   python -c "
 import torch, jax, numpy, scipy
 print(\"offline imports successful\")

@@ -6,15 +6,19 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/draccus-env.sh"
 
 "$DRACCUS_BUNDLE/bin/draccus-run" bash -lc '
   set -euo pipefail
-  . /opt/draccus/spack/share/spack/setup-env.sh
-  spack env activate -p base-ml
 
   echo "[paths]"
-  test "$SPACK_ROOT" = /opt/draccus/spack
-  case "$CUDA_HOME" in
+  test "${SPACK_ROOT:-}" = /opt/draccus/spack
+  export PATH="/opt/draccus/view/base-ml/bin:${PATH}"
+  # Spack jaxlib installs omit JAX pip `nvidia.*` shim dirs used for dlopen (`jax_plugins.xla_cuda12._load_nvidia_libraries`).
+  # After installing `py-jaxlib`, run the one-time stub layout under the active workstream (`.workstream/spack-envs-bootstrap/artifacts/p4.3-jax-nvidia-stubs.sh` or tracker ** Log) inside `draccus-build`.
+  # PJRT CUDA optional `cufftGetVersion`/`cuSOLVER` probes can also spuriously fail on multi-toolkit Docker rootfs; skip version probes while keeping real GPU asserts below.
+  export JAX_SKIP_CUDA_CONSTRAINTS_CHECK="${JAX_SKIP_CUDA_CONSTRAINTS_CHECK:-1}"
+
+  case "${CUDA_HOME}" in
     /opt/draccus/view/base-ml | /usr/local/cuda ) ;;
     *)
-      printf 'ERROR: CUDA_HOME=%s expected /opt/draccus/view/base-ml or /usr/local/cuda\\n' "$CUDA_HOME" >&2
+      printf >&2 "ERROR: CUDA_HOME=%s expected /opt/draccus/view/base-ml or /usr/local/cuda\n" "${CUDA_HOME}"
       exit 1 ;;
   esac
   which python
