@@ -15,7 +15,8 @@ Make the bundle's `uv` toolchain a pinned rootfs artifact and make `pip` structu
 - `pip` and `pip3` on PATH inside the namespace resolve to bundle-shipped shims that exit non-zero with `use 'draccus-uv pip <args>' instead`. The Spack-shipped `pip` (from `py-pip` in `base-ml/view`) is shadowed by a shims directory prepended to PATH.
 - Project venvs (created by `draccus-project-init` or any `draccus-uv venv` invocation) have `.venv/bin/pip*` replaced with the same shim — closes the `source .venv/bin/activate && pip install torch` shadow path.
 - `bin/draccus-run` no longer mounts any host binary. The `DRACCUS_HOST_UV_BIN` knob is deleted. The `host_uv_*` block (lines 80–104 in current `bin/draccus-run`) is removed.
-- `bin/draccus-uv` collapses to a 3-line `exec "$(dirname "$0")/draccus-run" uv "$@"`.
+- `bin/draccus-uv` stays a thin entrypoint, with behavior delegated to `lib/draccus-uv.sh`.
+- `draccus-uv pip install ...` auto-creates/uses a workspace `.venv` and targets `/workspace/.venv/bin/python` unless the caller explicitly supplies `--python`, `--system`, `--target`, or `--prefix`.
 
 Net effect: `pip install torch` fails fast with a useful message at every casual entry point; `uv` is the one-and-only path; the bundle is genuinely self-contained on any base image with no host-side dependencies beyond bwrap + NVIDIA driver.
 
@@ -153,7 +154,8 @@ The helper lives in `lib/draccus-project.sh` (`draccus_project_neutralize_pip`) 
 - `scripts/bootstrap-rootfs.sh` downloads, verifies, and installs `uv` at `rootfs/usr/local/bin/uv`.
 - `shims/pip` and `shims/pip3` exist at bundle root, executable, identical content (or `pip3` is a symlink), with the agreed error message.
 - `bin/draccus-run` has the `host_uv_*` block deleted and PATH prepends `/opt/draccus/shims`.
-- `bin/draccus-uv` is exactly 3 lines (shebang + `set -euo pipefail` + `exec`).
+- `bin/draccus-uv` is a thin wrapper that sources `lib/draccus-uv.sh`.
+- `lib/draccus-uv.sh` auto-targets workspace `.venv` for `draccus-uv pip install/sync/uninstall` unless the caller supplies an explicit uv pip target.
 - `lib/draccus-project.sh` exports `draccus_project_neutralize_pip`; called from `bin/draccus-project-init` after `uv venv`.
 - `./scripts/validate-static.sh` passes; new Gate 0 checks: shims executable + content sentinel; `scripts/uv-version.env` parseable; `bin/draccus-run` PATH prepend present; `bin/draccus-uv` line count = 3; `bin/draccus-run` has no `DRACCUS_HOST_UV_BIN` reference.
 - `bin/draccus-probe` (Gate 1) passes: `command -v uv → /usr/local/bin/uv`; `command -v pip → /opt/draccus/shims/pip`; running `pip` exits with the agreed code and message.

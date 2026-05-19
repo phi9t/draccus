@@ -181,7 +181,7 @@ Fill BEFORE starting P1. Block downstream tasks until filled.
    - =./bin/draccus-run command -v uv= prints =/usr/local/bin/uv= (rootfs uv).
    - =./bin/draccus-run env | grep PATH= shows no =/tmp:= prefix.
 
-** DONE P2.3 Collapse draccus-uv to a 3-line wrapper
+** DONE P2.3 Keep draccus-uv as a thin wrapper over lib/draccus-uv.sh
    :PROPERTIES:
    :ID:       P2.3
    :OWNER:
@@ -189,9 +189,9 @@ Fill BEFORE starting P1. Block downstream tasks until filled.
    :FINISHED:
    :DEPENDS:  P2.2
    :END:
-   DoD: =bin/draccus-uv= is exactly the shebang + =set -euo pipefail= + =exec "$(dirname "$0")/draccus-run" uv "$@"= (≤ 5 lines including shebang).
+   DoD: =bin/draccus-uv= stays a thin entrypoint and delegates behavior to =lib/draccus-uv.sh=.
    Estimated time: ~5 min.
-   Acceptance: =wc -l bin/draccus-uv= ≤ 5; =shellcheck bin/draccus-uv= clean; =./bin/draccus-uv --version= prints the pinned =UV_VERSION=.
+   Acceptance: =shellcheck bin/draccus-uv lib/draccus-uv.sh= clean; =./bin/draccus-uv --version= prints the pinned =UV_VERSION=; =./bin/draccus-uv pip install <package>= targets workspace =.venv= instead of the read-only foundation view.
 
 * Phase 3 — Venv post-process :phase3:
 ** DONE P3.1 Add draccus_project_neutralize_pip to lib/draccus-project.sh
@@ -257,7 +257,8 @@ Fill BEFORE starting P1. Block downstream tasks until filled.
    - =shims/pip= and =shims/pip3= exist, executable, contain the sentinel string, shellcheck-clean.
    - =bin/draccus-run= contains the =shims= bind line AND the =/opt/draccus/shims:= PATH prepend.
    - =bin/draccus-run= contains NO reference to =DRACCUS_HOST_UV_BIN= or =host_uv_=.
-   - =bin/draccus-uv= line count ≤ 5.
+   - =bin/draccus-uv= delegates behavior to =lib/draccus-uv.sh=.
+   - =lib/draccus-uv.sh= auto-targets workspace =.venv= for =pip install/sync/uninstall=.
    - No shim name collides with any binary in =envs/base-{sys,ml}/spack.yaml= root specs (cheap grep; full collision detection happens at Gate 1).
    Estimated time: ~45 min.
    Acceptance: =./scripts/validate-static.sh= exits 0; intentionally break one check at a time to confirm each new assertion fires.
@@ -343,6 +344,10 @@ Fill BEFORE starting P1. Block downstream tasks until filled.
 - Pin bump ergonomics: release =.sha256= sidecar plus tarball URL pattern worked on first bootstrap after implementation; tarball layout favors top-level =uv= (fallback =find -print -quit=). Idempotent skip uses =uv --version | grep VERSION= rather than hashing the unpacked binary vs tarball digest.
 
 ** Log (verification)
+   - 2026-05-19 update: =draccus-uv pip install= now auto-creates/uses workspace =.venv= and passes =--python /workspace/.venv/bin/python= to avoid installing into read-only =/opt/draccus/view/base-ml=.
+   - 2026-05-19 update: =draccus-uv= rejects direct foundation package requirements and audits =uv pip install/sync --dry-run= output before package mutation, so transitive forbidden packages are caught before install.
+   - 2026-05-19 verification: =draccus-uv pip install rich= installed into =/workspace/.venv=; =draccus-uv pip install torch= failed with the direct foundation-package guard; =draccus-uv pip install nvitop= failed with the resolved-plan guard because it would add =nvidia-ml-py=.
+   - 2026-05-19 update: =draccus-shell= now activates workspace =.venv= when present; =nvidia-smi= is exposed through =/opt/draccus/host-bin= as a host diagnostic binary instead of a rootfs package.
    - Gate 0: =./scripts/validate-static.sh= exit **0**.
    - Full suite: =./scripts/validate-all.sh= exit **0** (see agent log 2026-05-11).
    - P3 acceptance note: when testing inside bwrap default =/workspace=, call project shim as =/workspace/projects/<name>/.venv/bin/pip= (not a host-relative =projects/...= path unless =DRACCUS_WORKSPACE= matches).

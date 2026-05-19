@@ -55,7 +55,9 @@ source .venv/bin/activate
 draccus-uv pip install transformers datasets accelerate peft trl safetensors
 ```
 
-Inside `draccus-shell` or `draccus-run`, the `draccus-uv` wrapper is available as plain `uv` with all protections active.
+If `.venv` does not exist yet, `draccus-uv pip install ...` creates it with the canonical `--system-site-packages` layout before installing. It never installs project packages into the read-only foundation view.
+
+Inside `draccus-shell` or `draccus-run`, the `draccus-uv` wrapper is available as plain `uv` with all protections active. `draccus-shell` also activates the workspace `.venv` when it exists, so packages installed with `draccus-uv pip install ...` are on `python` by default in the interactive shell.
 
 ### The do-not-shadow rule
 
@@ -64,7 +66,7 @@ These packages must **always** come from the Spack foundation, never from pip:
 - `torch`, `jax`, `jaxlib`, `numpy`, `scipy`, `triton`
 - Any `nvidia-*` pip distribution
 
-`draccus-uv` enforces this structurally via `UV_EXTRA_OVERRIDES` -- the uv resolver physically cannot install these packages into your `.venv`. The authoritative list lives in `scripts/uv_overrides.txt`.
+`draccus-uv` enforces this structurally before mutation: direct requirements are checked, the resolved install plan is audited, and Gate 10b scans venv provenance. The authoritative list lives in `scripts/validate_uv_layering.sh`.
 
 ### Debugging dependency conflicts
 

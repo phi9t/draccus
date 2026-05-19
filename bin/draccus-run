@@ -109,6 +109,7 @@ exec "$BWRAP" \
   --tmpfs /tmp \
   --tmpfs /run \
   "${gpu_args[@]}" \
+  --ro-bind "$DRACCUS_BUNDLE/host-bin" /opt/draccus/host-bin \
   "${driver_args[@]}" \
   "${net_overlay_args[@]}" \
   --ro-bind "$DRACCUS_BUNDLE/shims" /opt/draccus/shims \
@@ -127,6 +128,7 @@ exec "$BWRAP" \
   --setenv DRACCUS_ML_VIEW /opt/draccus/view/base-ml \
   --setenv SPACK_USER_CACHE_PATH /opt/draccus/cache/spack \
   --setenv UV_CACHE_DIR /opt/draccus/cache/uv \
+  --setenv UV_LINK_MODE copy \
   --setenv HF_HOME /opt/draccus/cache/huggingface \
   --setenv CUDA_HOME "$DRACCUS_RESOLVED_CUDA_HOME" \
   --setenv CUDA_ROOT "$DRACCUS_RESOLVED_CUDA_ROOT" \
@@ -134,7 +136,7 @@ exec "$BWRAP" \
   --setenv PYTHONNOUSERSITE "1" \
   --setenv HOME /workspace \
   --setenv DRACCUS_WORKSPACE /workspace \
-  --setenv PATH "${draccus_path_views}:${DRACCUS_BWRAP_CUDA_BIN_PREFIX:-}/usr/local/nvidia/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+  --setenv PATH "${draccus_path_views}:/opt/draccus/host-bin:${DRACCUS_BWRAP_CUDA_BIN_PREFIX:-}/usr/local/nvidia/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
   --setenv LD_LIBRARY_PATH "/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/cuda/lib64:/usr/local/cuda/lib${cuda_ld_extra}:/opt/draccus/view/base-ml/lib:/opt/draccus/view/base-ml/lib64" \
   --chdir /workspace \
   "$@"

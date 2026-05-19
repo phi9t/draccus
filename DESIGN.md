@@ -26,7 +26,7 @@ Everything else — Spack envs, uv overlays, validation gates, pre-commit hooks 
 
 The layering invariant — **never let uv install anything on the do-not-shadow list** (`torch`, `jax`, `jaxlib`, `numpy`, `scipy`, `triton`, `nvidia-*`) — is the single most load-bearing rule in the system. `scripts/validate_uv_layering.sh` is its enforcement mechanism.
 
-Structural enforcement is provided by `bin/draccus-uv` (the preferred way to invoke `uv` inside the namespace) together with `UV_EXTRA_OVERRIDES` pointing at `scripts/uv_overrides.txt`. This file is bound at `/opt/draccus/uv_overrides.txt` for every `draccus-run` / `draccus-uv` session, giving the uv resolver the highest-precedence constraints so it never satisfies foundation packages from PyPI or a project lockfile.
+Structural enforcement is provided by `bin/draccus-uv` (the preferred way to invoke `uv` inside the namespace). The wrapper rejects direct foundation requirements, dry-runs and audits resolved install plans before mutation, and keeps `UV_EXTRA_OVERRIDES` bound at `/opt/draccus/uv_overrides.txt` for every `draccus-run` / `draccus-uv` session. Gate 10b then scans venv provenance as a final guard.
 
 ```mermaid
 flowchart TD
@@ -54,11 +54,14 @@ This directory **is** the Draccus bundle. Physical storage may live anywhere; la
 | **Caches / build** | `$DRACCUS_BUNDLE/cache`, `$DRACCUS_BUNDLE/build` |
 | **Pinned rootfs** | `$DRACCUS_BUNDLE/rootfs` → `/` inside the namespace |
 | **Environment sources (VC)** | `envs/base-sys/spack.yaml`, `envs/base-ml/spack.yaml` (mirror under `/opt/draccus/envs` only after copy/bootstrap; authoritative copies live here in git) |
-| **Launchers** | `bin/draccus-run`, `bin/draccus-build`, `bin/draccus-offline`, `bin/draccus-shell`, `bin/draccus-debug-shell`, `bin/draccus-probe` |
-| **Rootfs bootstrap** | `scripts/bootstrap-rootfs.sh` (Docker export of `nvidia/cuda:13.1.1-cudnn-devel-ubuntu24.04` by default; set `DRACCUS_ROOTFS_MODE=debootstrap` for legacy Debian bookworm) |
+| **Launchers** | `bin/draccus-run`, `bin/draccus-build`, `bin/draccus-offline`, `bin/draccus-shell`, `bin/draccus-debug-shell`, `bin/draccus-probe`, `bin/draccus-uv`, `bin/draccus-project-init` |
+| **Shims (PATH-prepended ahead of views)** | `shims/{pip,pip3}` → `/opt/draccus/shims` inside the namespace; see §8.2 |
+| **Pinned tool versions (foundation)** | `scripts/uv-version.env` (uv pin + sha256), `scripts/uv_overrides.txt` (DO_NOT_SHADOW constraints) |
+| **Rootfs bootstrap** | `scripts/bootstrap-rootfs.sh` (Docker export of `nvidia/cuda:13.1.1-cudnn-devel-ubuntu24.04` by default; installs pinned `uv` into `rootfs/usr/local/bin/uv`; set `DRACCUS_ROOTFS_MODE=debootstrap` for legacy Debian bookworm) |
 | **Validation** | `scripts/validate-static.sh` (Gate 0, GPU-free), `scripts/validate-all.sh` (14-gate full suite), plus per-gate scripts under `scripts/` |
-| **Development enforcement** | `.pre-commit-config.yaml` (shellcheck + shfmt + ruff + Gate 0 on every commit), `CLAUDE.md` (persistent Claude Code session rules) |
-| **Bundle resolution helper** | `lib/draccus-env.sh` |
+| **Development enforcement** | `.pre-commit-config.yaml` (shellcheck + shfmt + ruff + Gate 0 on every commit), `AGENTS.md` / `CLAUDE.md` (persistent agent-session rules) |
+| **Workstream protocol home** | `.workstream/<slug>/{design.md,tracker.org,artifacts/}` for non-trivial work; protocol in `AGENTS.md` and `.agents/skills/workstream/SKILL.md` |
+| **Bundle resolution + helpers** | `lib/draccus-env.sh`, `lib/draccus-bwrap-env.sh`, `lib/draccus-nvidia-mounts.sh`, `lib/draccus-project.sh`, `lib/draccus-uv.sh`, `lib/draccus-view-dir.sh` |
 
 You no longer need to hardcode the bundle path in scripts — set `DRACCUS_BUNDLE` or rely on auto-detection.
 
@@ -127,17 +130,31 @@ This is the entire point of the system: Spack installs that hard-code their own 
 
 ```
 $DRACCUS_BUNDLE/
-├── bin/           draccus-run, draccus-build, draccus-offline, draccus-shell, draccus-debug-shell, draccus-probe
-├── lib/           draccus-env.sh, draccus-bwrap-env.sh, draccus-nvidia-mounts.sh
-├── rootfs/        pinned distro rootfs
+├── bin/           draccus-run, draccus-build, draccus-offline, draccus-shell,
+│                  draccus-debug-shell, draccus-probe, draccus-uv, draccus-project-init
+├── lib/           draccus-env.sh, draccus-bwrap-env.sh, draccus-nvidia-mounts.sh,
+│                  draccus-project.sh, draccus-uv.sh, draccus-view-dir.sh
+├── shims/         pip, pip3                          ← bound RO at /opt/draccus/shims
+├── rootfs/        pinned distro rootfs (contains pinned uv at /usr/local/bin/uv)
 ├── state/
 │   ├── spack/     Spack repo + opt tree + environments
 │   └── view/base-sys, base-ml
 ├── cache/spack, uv, huggingface
 ├── build/stage
-├── envs/base-sys/spack.yaml, base-ml/spack.yaml
-├── scripts/       bootstrap-rootfs.sh, validate-*.sh, prune-draccus.sh
-└── projects/      optional convention for pinned projects
+├── envs/
+│   ├── base-sys/spack.yaml
+│   ├── base-ml/spack.yaml
+│   └── common/rootfs-externals.yaml      ← shared externals (gcc, git, cuda from rootfs)
+├── scripts/       bootstrap-rootfs.sh, validate-*.sh (Gate 0–13),
+│                  validate_foundation.py, validate_uv_layering.sh,
+│                  uv-version.env, uv_overrides.txt, refresh-spack-lockfiles.sh,
+│                  prune-draccus.sh
+├── projects/      _template/ (tracked; per-project venvs are gitignored)
+├── docs/          tech-blog-hello-draccus.md, coco-cursor-delegation.md
+├── .workstream/   <slug>/{design.md, tracker.org, artifacts/} per non-trivial feature
+├── .agents/       skills/ (e.g. workstream/SKILL.md)
+├── AGENTS.md      canonical agent-session rules (CLAUDE.md is a symlink)
+└── DESIGN.md      this document
 ```
 
 ---
@@ -167,6 +184,7 @@ Everything else — namespaces (`--unshare-user/ipc/pid/uts`), proc/dev/sys, tmp
 
 - **`--ro-bind-data` for `/etc/resolv.conf` and `/etc/hosts`** (`bin/draccus-run:55-66`). Because `/` is `--ro-bind` from `rootfs/`, you cannot overlay individual files with normal binds. The launchers open the host file as an fd (`exec {FD}<...`) and pass `--ro-bind-data $FD /etc/resolv.conf`. bwrap reads from the fd at startup and materializes the content under tmpfs. This is how DNS still works inside a read-only rootfs.
 - **NVIDIA driver discovery** (`lib/draccus-nvidia-mounts.sh`). Driver libs are not in the Spack graph (they ship with the host kernel module). The script `ldconfig -p`'s the host, greps `libcuda.so / libnvidia-ml.so / libcudadebugger.so`, dedupes the parent dirs, and `--ro-bind-try`s each into the same path inside. Plus `/usr/local/nvidia` if present, plus `/dev/nvidia*`, `/dev/nvidia-caps`, `/dev/infiniband`. This is the boundary where Draccus stops being hermetic — driver ABI is inherited from the outer host.
+- **Host diagnostics** (`/opt/draccus/host-bin`). Runtime-only host tools that must match the driver, currently `nvidia-smi`, are mounted over bundle fallbacks in `/opt/draccus/host-bin`. This keeps host binaries out of the rootfs while avoiding broad host `/usr/bin` binds.
 - **CUDA toolchain discovery** (`lib/draccus-bwrap-env.sh`). Prefers Spack `view/base-ml/bin/nvcc` when present, falls back to rootfs `/usr/local/cuda*/bin/nvcc` (Docker layout). Exports `DRACCUS_RESOLVED_CUDA_HOME` so the launcher can set `CUDA_HOME`/`CUDA_ROOT` correctly. Globs all `cuda-*/bin` directories and stacks them into `PATH`/`LD_LIBRARY_PATH`. This is what makes the bundle usable *before* Spack is bootstrapped — you can `draccus-build` with only the Docker rootfs in place.
 
 ---
@@ -184,11 +202,13 @@ CUDA_HOME, CUDA_ROOT       ← Spack view if nvcc present, else rootfs CUDA
 TORCH_CUDA_ARCH_LIST=10.0  ← sacrosanct, B200
 PYTHONNOUSERSITE=1         ← kills ~/.local site-packages leakage
 HOME=/workspace            ← every project sees its own $HOME
-PATH = base-ml/bin : base-sys/bin : <rootfs-cuda-bins> : /usr/local/sbin:/usr/local/bin:...
+PATH = /opt/draccus/shims : base-ml/bin : base-sys/bin : <rootfs-cuda-bins> : /usr/local/sbin:/usr/local/bin:...
 LD_LIBRARY_PATH = /usr/local/nvidia/lib(64) : <rootfs-cuda-lib64> : /usr/local/cuda/lib : base-ml/lib(64)
 ```
 
-The default `PATH` ordering — `base-ml` *first*, then `base-sys` — means `python` resolves to the ML foundation (torch/jax) out of the box. Set `DRACCUS_PREFER_SYS_PATH=1` (or use `draccus-debug-shell`) to reverse the order for infra/toolchain work. In both cases, Spack views win over rootfs, and rootfs CUDA only fills in where Spack hasn't.
+`/opt/draccus/shims` is always first — it provides `pip`/`pip3` stubs that exit with a clear "use draccus-uv pip" message, shadowing both `py-pip` in the base-ml view and any host-provided pip in the rootfs. See §8.2 for the rationale.
+
+After the shims, the default `PATH` ordering — `base-ml` *first*, then `base-sys` — means `python` resolves to the ML foundation (torch/jax) out of the box. Set `DRACCUS_PREFER_SYS_PATH=1` (or use `draccus-debug-shell`) to reverse the order for infra/toolchain work; shims stay first either way. Spack views win over rootfs, and rootfs CUDA only fills in where Spack hasn't. `uv` itself resolves from the rootfs at `/usr/local/bin/uv` (pinned in `scripts/uv-version.env`, installed by `scripts/bootstrap-rootfs.sh`).
 
 ---
 
@@ -234,7 +254,7 @@ Projects must create venvs with:
 draccus-uv venv --python "$(which python)" --system-site-packages .venv
 ```
 
-(`draccus-uv …` forwards to `uv` inside `draccus-run` so `UV_EXTRA_OVERRIDES` is active.) After creation, `draccus_project_neutralize_pip` copies `shims/pip` onto `.venv/bin/pip`, `.venv/bin/pip3`, and any `.venv/bin/pip3.*` present (recent `uv venv` may omit pip stubs altogether; neutralize installs them explicitly) so `source .venv/bin/activate && pip install torch` fails fast with the same message as global `pip`.
+(`draccus-uv …` forwards to `uv` inside `draccus-run` so `UV_EXTRA_OVERRIDES` is active. For `draccus-uv pip install/sync/uninstall`, the wrapper auto-creates or reuses workspace `.venv` and passes `--python /workspace/.venv/bin/python` unless the caller supplies an explicit `--python`, `--system`, `--target`, or `--prefix`.) After creation, `draccus_project_neutralize_pip` copies `shims/pip` onto `.venv/bin/pip`, `.venv/bin/pip3`, and any `.venv/bin/pip3.*` present (recent `uv venv` may omit pip stubs altogether; neutralize installs them explicitly) so `source .venv/bin/activate && pip install torch` fails fast with the same message as global `pip`.
 
 The `--system-site-packages` flag allows the venv to see Spack's torch/jax while keeping project packages local.
 
@@ -391,7 +411,9 @@ uv tool install pre-commit shellcheck-py ruff yamllint
 pre-commit install   # wires hooks into .git/hooks/pre-commit
 ```
 
-**`CLAUDE.md`** at the bundle root encodes the same invariants as persistent instructions for Claude Code sessions: mandatory Gate 0 after any edit, do-not-shadow list, two-layer model, canonical prefix contract, pinned versions.
+**`AGENTS.md`** at the bundle root encodes the same invariants as persistent instructions for *all* coding agents (Claude Code, Codex, Cursor, OpenHands, …); `CLAUDE.md` is a symlink to it for tool compatibility. The invariants block covers: mandatory Gate 0 after any edit, the do-not-shadow list, the two-layer model, the canonical prefix contract, pinned versions, and the pip-is-disabled rule.
+
+**`.workstream/<slug>/`** is the protocol home for any non-trivial work (anything beyond a single-file fix). Each workstream carries a `design.md` (goal, scope, invariants honored, risks, DoD), a `tracker.org` (org-mode TODO/IN-PROGRESS/BLOCKED/DONE with `:DEPENDS:` and `:SIGN_OFF:`), and an `artifacts/` directory for logs and lockfile snapshots. The full protocol — templates, decision sign-off rules, two-mode workflow — lives in `.agents/skills/workstream/SKILL.md`. Agents pick up the lowest-numbered `TODO` whose dependencies are `DONE`, set `IN-PROGRESS`, execute, mark `DONE` on completion; the protocol exists so multi-agent / cross-session work converges instead of drifting.
 
 ---
 
@@ -434,17 +456,29 @@ CPU target (`x86_64_v3` vs `icelake`), rootfs distro flavor, pinned Spack commit
 
 | Concept | File in this repo |
 |-------------|-------------------|
-| draccus-run / build | `bin/draccus-run`, `bin/draccus-build` |
-| draccus-probe | `bin/draccus-probe` |
+| Daily launchers (run / build / offline) | `bin/draccus-run`, `bin/draccus-build`, `bin/draccus-offline` |
+| Interactive shells | `bin/draccus-shell` (ML PATH default), `bin/draccus-debug-shell` (base-sys PATH first) |
+| Namespace + path probe | `bin/draccus-probe` |
+| uv wrapper (foundation enforcer) | `bin/draccus-uv` (thin entrypoint), `lib/draccus-uv.sh` (auto-venv logic) |
+| Project bootstrap | `bin/draccus-project-init`, `lib/draccus-project.sh` |
 | Bundle resolution | `lib/draccus-env.sh` |
 | CUDA toolchain resolution | `lib/draccus-bwrap-env.sh` |
 | NVIDIA device + driver mounts | `lib/draccus-nvidia-mounts.sh` |
+| View-path helpers | `lib/draccus-view-dir.sh` |
+| Pip shims (PATH-prepended) | `shims/pip`, `shims/pip3` |
 | base-sys / base-ml specs | `envs/base-sys/spack.yaml`, `envs/base-ml/spack.yaml` |
-| Rootfs bootstrap | `scripts/bootstrap-rootfs.sh` |
+| Shared spack externals (gcc/git/cuda from rootfs) | `envs/common/rootfs-externals.yaml` |
+| Rootfs bootstrap (also installs pinned `uv`) | `scripts/bootstrap-rootfs.sh` |
+| Pinned uv version + sha256 | `scripts/uv-version.env` |
+| DO_NOT_SHADOW resolver constraints | `scripts/uv_overrides.txt` |
 | Gate 0 static validation | `scripts/validate-static.sh` |
 | Full validation suite | `scripts/validate-all.sh` |
 | Validation (per gate) | `scripts/validate-base-sys.sh`, `scripts/validate-base-ml.sh`, `scripts/validate-project-overlay.sh`, `scripts/validate_foundation.py`, `scripts/validate_uv_layering.sh` |
 | Lockfile refresh | `scripts/refresh-spack-lockfiles.sh` |
 | GC / cleanup | `scripts/prune-draccus.sh` |
+| Project template (tracked; instances gitignored) | `projects/_template/` |
+| Workstream protocol home | `.workstream/<slug>/{design.md,tracker.org,artifacts/}` |
+| Agent skills (workstream protocol, etc.) | `.agents/skills/` |
+| Long-form docs | `docs/tech-blog-hello-draccus.md`, `docs/coco-cursor-delegation.md` |
 | Development enforcement | `.pre-commit-config.yaml`, `.shellcheckrc`, `pyproject.toml` (ruff), `.yamllint.yml` |
-| Claude Code session rules | `CLAUDE.md` |
+| Agent session rules (all agents) | `AGENTS.md` (and `CLAUDE.md` symlink) |

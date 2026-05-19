@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+echo "nvidia-smi is unavailable: no host NVIDIA SMI binary was mounted" >&2
+exit 127

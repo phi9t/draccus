@@ -1,3 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
-exec "$(dirname "$0")/draccus-run" uv "$@"
+
+# shellcheck source=../lib/draccus-env.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/draccus-env.sh"
+# shellcheck source=../lib/draccus-uv.sh
+source "$DRACCUS_BUNDLE/lib/draccus-uv.sh"
+
+draccus_uv_main "$@"

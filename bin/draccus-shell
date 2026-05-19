@@ -1,3 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
-exec "$(dirname "$0")/draccus-run" bash "$@"
+
+exec "$(dirname "$0")/draccus-run" bash -lc '
+if [[ -f .venv/bin/activate ]]; then
+  # shellcheck source=/dev/null
+  source .venv/bin/activate
+fi
+exec bash "$@"
+' draccus-shell "$@"

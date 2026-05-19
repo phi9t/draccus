@@ -31,6 +31,13 @@ draccus_append_nvidia_mounts() {
     _drv_arr+=(--ro-bind-try "$canon" "$shim")
   }
 
+  draccus__maybe_ro_bind_host_bin() {
+    local src="$1"
+    local dest="$2"
+    [[ -x "$src" ]] || return 0
+    _drv_arr+=(--ro-bind-try "$src" "$dest")
+  }
+
   local dev
 
   # Classic device nodes + full caps directory where present (never assume specific cap minor numbers).
@@ -53,6 +60,8 @@ draccus_append_nvidia_mounts() {
   fi
 
   draccus__add_driver_dir "/usr/local/nvidia"
+  draccus__maybe_ro_bind_host_bin /usr/bin/nvidia-smi /opt/draccus/host-bin/nvidia-smi
+  draccus__maybe_ro_bind_host_bin /usr/local/nvidia/bin/nvidia-smi /opt/draccus/host-bin/nvidia-smi
 
   local canon ldconfig_seen=false
   if command -v ldconfig >/dev/null 2>&1; then
