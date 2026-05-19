@@ -1,0 +1,17 @@
+# Draccus UV_EXTRA_OVERRIDES
+# Single source of truth for packages that must always resolve from the Spack base-ml view.
+# Injected automatically by draccus-run / draccus-uv so uv's resolver never
+# installs conflicting copies of the foundation stack into project .venvs.
+#
+# These match the DO_NOT_SHADOW list in scripts/validate_uv_layering.sh.
+# When Spack pins in envs/base-ml/spack.yaml change, update both this file and the validator.
+#
+# nvidia-* packages are enforced via the runtime scan in validate_uv_layering.sh
+# (they must never appear as pip distributions inside a .venv unless they came from /opt/draccus).
+
+torch
+jax
+jaxlib
+numpy
+scipy
+triton
