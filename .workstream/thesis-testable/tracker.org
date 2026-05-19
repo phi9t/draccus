@@ -16,6 +16,11 @@ Convention:
 - Never broaden the matrix to "make it more impressive" — coverage of the contract is the goal (design.md §10).
 - A matrix entry that ends up =contract-rejected= is a **pass**, not a fail (design.md §7.3). Read that section before judging output.
 
+Workstream prerequisites (must be DONE before P1 can start; see [[file:../INDEX.md][INDEX.md]] for status):
+- =.workstream/spack-envs-bootstrap/= — foundation must exist for the smoke test to import torch/jax.
+- =.workstream/uv-in-rootfs/= — rootfs =uv= + =shims/pip= are part of the contract being tested.
+- =.workstream/uv-overlay/= — pip-block and Gate 10b are exercised by negative tests; Gate 10c (still TODO in uv-overlay/P4.3) is required for the matrix to assert the project-sweep gate fires.
+
 * Decisions
 Fill BEFORE starting P1. Block downstream tasks until filled.
 

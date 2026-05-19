@@ -1,7 +1,7 @@
 # Workstream: uv in rootfs + pip blocked
 
 **Owner:** Cursor agent session (2026-05-11)
-**Status:** Complete.
+**Status:** Closed (2026-05-11) — Phases 0–5 DONE; `uv` pinned at `rootfs/usr/local/bin/uv` (version + sha256 in `scripts/uv-version.env`); `shims/{pip,pip3}` shadow Spack's `py-pip` via PATH order; `bin/draccus-uv` delegates to `lib/draccus-uv.sh` (auto-venv + foundation-package guards landed in commit `96c7ce8`).
 **Target completion:** TBD
 **Related docs:** `DESIGN.md` (§4 path contract, §6 environment, §8 uv layering), `AGENTS.md` (critical invariants), `README.md` (thesis), commit `fefc6da` ("ML-first default PATH, draccus-uv as first-class, researcher-first docs").
 

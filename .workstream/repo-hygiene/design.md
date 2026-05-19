@@ -1,7 +1,7 @@
 # Workstream: Repo Hygiene
 
 **Owner:** Codex
-**Status:** Done
+**Status:** Closed (2026-05-14) — Phases 0–4 DONE; 182 GB of generated state relocated to `~/.automata/draccus/repo-hygiene-20260514T062236Z/`; `rootfs/`, `state/`, `cache/`, `build/` are symlinks back into the relocated tree; `.gitignore` tightened so source remains visible while generated paths stay out.
 **Target completion:** 2026-05-14
 **Related docs:** AGENTS.md §Workstream protocol, AGENTS.md §Critical invariants, DESIGN.md §Repository and bundle root
 

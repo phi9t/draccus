@@ -1,7 +1,7 @@
 # Workstream: Repo Commit Cleanup
 
 **Owner:** Codex
-**Status:** In progress
+**Status:** Closed (2026-05-19) — Phases 0–4 DONE; dirty tree grouped into 5 reviewable commits (`2c55835`, `6436277`, `79d3eb7`, `ced9b92`, `298bb59`); `git status --short` clean at handoff.
 **Target completion:** 2026-05-19
 **Related docs:** AGENTS.md §Workstream protocol, AGENTS.md §Git hygiene
 

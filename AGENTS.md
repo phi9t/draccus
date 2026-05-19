@@ -31,6 +31,8 @@ Rules:
 
 **Skill:** the full protocol (templates, hard rules, two-mode workflow) lives in `.agents/skills/workstream/SKILL.md`. Claude Code users can invoke it as `/workstream`; other agents should read the SKILL.md directly before starting or continuing a workstream.
 
+**Index:** for the current list of active and closed workstreams (with statuses, dependencies, and the single outstanding code action across all of them), see `.workstream/INDEX.md`. Update the index whenever a workstream lands or its `**Status:**` line changes.
+
 ## Mandatory: Run after every edit
 
 After editing ANY file in bin/, lib/, scripts/, envs/, or mise.toml, you MUST run:

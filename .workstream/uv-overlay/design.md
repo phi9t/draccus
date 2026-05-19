@@ -1,9 +1,10 @@
 # Workstream: uv Overlay
 
 **Owner:** unassigned
-**Status:** Phases 0–2 merged in commit `242bf4b` (draccus-project-init + projects/_template + lib/draccus-project.sh); Phase 3 partial (validate-project-overlay.sh and validate_uv_layering.sh present; empirical `uv sync --frozen` check still TODO under P3.1); Phase 4–5 open. The single outstanding code gap is `scripts/validate-projects-all.sh` (Gate 10c, P4.3).
+**Status:** Active — empirical `uv sync --frozen` check (P3.1) + the only outstanding code gap across all workstreams: `scripts/validate-projects-all.sh` (Gate 10c, P4.3). Phases 0–2 merged in commit `242bf4b`; Phase 3 partial; `bin/draccus-uv` auto-venv + foundation-package guards added in commit `96c7ce8`.
 **Target completion:** TBD
-**Related docs:** `DESIGN.md` (§8 uv overlays), `AGENTS.md` (do-not-shadow invariant, two-layer Python model)
+**Depends on:** `.workstream/spack-envs-bootstrap/` (foundation must exist for `--system-site-packages` to see torch/jax/numpy), `.workstream/uv-in-rootfs/` (rootfs `uv`, `shims/pip`, and the `bin/draccus-uv` → `lib/draccus-uv.sh` resolver-guard chain).
+**Related docs:** `DESIGN.md` (§8 uv overlays), `AGENTS.md` (do-not-shadow invariant, two-layer Python model), [`../INDEX.md`](../INDEX.md)
 
 ---
 

@@ -1,9 +1,10 @@
 # Workstream: testable thesis — host contract + base-image matrix
 
 **Owner:** unassigned
-**Status:** P0 (decisions) ready to start.
+**Status:** Blocked on: user sign-off on six P0 Decisions (host-contract floor, matrix members, runner shape, state distribution, smoke test scope, rootfs isolation contract).
 **Target completion:** TBD
-**Related docs:** `README.md` (thesis statement), `DESIGN.md` (§§4 path contract, 10 validation, 13 security/isolation), `AGENTS.md` (critical invariants, validation gate sequence), commit `fefc6da` (researcher-first README), and the two enforcement workstreams: `.workstream/uv-overlay/`, `.workstream/uv-in-rootfs/`.
+**Depends on:** `.workstream/spack-envs-bootstrap/` (foundation must exist for the smoke test to import torch/jax), `.workstream/uv-in-rootfs/` (rootfs `uv` + `shims/pip` are part of the contract being tested), `.workstream/uv-overlay/` (pip-block and Gate 10b are exercised by negative tests).
+**Related docs:** `README.md` (thesis statement), `DESIGN.md` (§§4 path contract, 10 validation, 13 security/isolation), `AGENTS.md` (critical invariants, validation gate sequence), commit `fefc6da` (researcher-first README), [`../INDEX.md`](../INDEX.md).
 
 ---
 

@@ -1,7 +1,7 @@
 # Workstream: Spack Environments Bootstrap
 
 **Owner:** unassigned
-**Status:** Phases 0–5 **DONE**. P4.2 base-ml install completed supervised (`systemd-run --user`; see §7.3); P4.3–P4.4 Gates 6–9 and offline foundation green; `./scripts/validate-all.sh` exit 0 on B200 (2026-05-11, ~137 s wall clock warm cache). Lock snapshots under `.workstream/spack-envs-bootstrap/artifacts/{base-sys,base-ml}.spack.lock`; P5.3 buildcache push skipped (public read-only mirror only).
+**Status:** Closed (2026-05-11) — Phases 0–5 DONE; `./scripts/validate-all.sh` exit 0 on B200 in ~137 s wall (warm cache); lockfile snapshots under [`artifacts/{base-sys,base-ml}.spack.lock`](artifacts/); P5.3 buildcache push intentionally skipped (configured mirror is public read-only).
 **Target completion:** TBD
 **Related docs:** `DESIGN.md` (§7 design principles, §9 bootstrap, §10 validation), `AGENTS.md` / `CLAUDE.md` (pinned versions, do-not-shadow invariant, critical invariants)
 

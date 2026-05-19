@@ -14,8 +14,8 @@ Convention:
 - Append command output as nested =** Log= subheading or in a =:LOGBOOK:= drawer.
 - Never install torch/jax/numpy/scipy/triton/nvidia-* via uv (AGENTS.md "Critical invariants" §1, §2).
 
-* Status snapshot (2026-05-11)
-Phase 0–2 code merged in commit =242bf4b= ("Add draccus-project-init + uv-overlay project template (Phase 1+2)"). Phase 3 partial (validate-project-overlay.sh + validate_uv_layering.sh present; empirical =uv sync --frozen= check still TODO). Phase 4–5 open. The single real implementation gap is =scripts/validate-projects-all.sh= (Gate 10c, P4.3) — referenced from design.md and DESIGN.md but does not exist; =scripts/validate-all.sh= does not call it.
+* Status snapshot (2026-05-19)
+Phases 0–2 code merged in commit =242bf4b= ("Add draccus-project-init + uv-overlay project template (Phase 1+2)"). Phase 3 partial (validate-project-overlay.sh + validate_uv_layering.sh present; empirical =uv sync --frozen= check still TODO under P3.1). Phase 4–5 open. Commit =96c7ce8= ("feat: harden draccus-uv; add host-bin shims; sync DESIGN.md with repo") added the auto-venv + foundation-package guards in =lib/draccus-uv.sh= sourced by =bin/draccus-uv=; design.md §7 was updated in the same commit. The single real implementation gap remaining is =scripts/validate-projects-all.sh= (Gate 10c, P4.3) — referenced from design.md and DESIGN.md but does not exist; =scripts/validate-all.sh= does not call it.
 
 * Decisions
 Recorded after the fact from merged code (commit =242bf4b=). Sign-off marked per item — executor-default decisions are flagged for explicit user confirmation before any future change.
