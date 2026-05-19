@@ -1,14 +1,29 @@
-# Materialized rootfs (debootstrap or Docker export) — not source
+# Materialized rootfs (debootstrap or Docker export) — not source.
+# Ignore both real directories and repo-root symlinks to externalized state.
+rootfs
 rootfs/
 
 # Spack installation tree and views — built artifacts
+state
 state/
 
 # Package caches — regenerated
+cache
 cache/
 
 # Build stage directories
+build
 build/
+
+# Local package extraction/build scratch
+pkg/
+intel/
+_cin/
+_cin2/
+_ckeep/
+_cuda_extract/
+_cuda_try/
+_cuda_try2/
 
 # User project experiments — individual projects are local; _template is tracked
 projects/*
@@ -25,6 +40,34 @@ __pycache__/
 # Virtual environments
 .venv/
 venv/
+
+# Local home/cache artifacts that should not live in the repo root
+.cache/
+.cargo/
+.cmake/
+.intel/
+.nv/
+.ruff_cache/
+.spack/
+.bash_history
+.python_history
+
+# Workstream command output is local evidence by default; force-add a specific artifact if it
+# becomes a durable review artifact.
+.workstream/*/artifacts/*
+!.workstream/*/artifacts/.gitkeep
+!.workstream/*/artifacts/README.md
+
+# Local agent runtime artifacts; keep source/config files under .trae tracked separately if added.
+.trae/artifacts/
+.trae/worktrees/
+
+# Local Claude permission/session state; project-level settings remain trackable.
+.claude/settings.local.json
+
+# One-off scratch/error files
+Error:
+typescript
 
 # Editor artifacts
 *.swp

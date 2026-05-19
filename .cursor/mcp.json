@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "coco": {
+      "type": "stdio",
+      "command": "coco",
+      "args": ["mcp", "serve"]
+    }
+  }
+}

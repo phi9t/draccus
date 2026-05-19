@@ -105,6 +105,20 @@ Bare `pip` / `pip3` on `PATH` resolve to bundle shims under `shims/pip` that exi
 - .gitignore excludes: rootfs/, state/, cache/, build/, projects/, __pycache__/, *.pyc, .venv/
 - Pre-commit hooks enforce Gate 0 on every commit (shellcheck, shfmt, ruff, yamllint)
 - Tracked source: bin/ (including draccus-uv), lib/, scripts/ (including uv_overrides.txt), envs/*/spack.yaml, mise.toml, README.md, DESIGN.md, docs/, AGENTS.md (+ CLAUDE.md symlink), .cursor/ (project MCP + rules), .trae/ (Coco model notes; `.trae/artifacts/` is gitignored), .workstream/
+- Test layout: keep test code adjacent to the implementation it exercises. For example, `scripts/foo_bar.py` should have `scripts/foo_bar_test.py`; `scripts/foo_bar.sh` should have `scripts/foo_bar_test.sh`. Shared fixtures should stay as close as practical to the owning test or implementation, not in a broad top-level test tree.
+
+## Code structure
+
+- `bin/` is for thin user-facing entrypoints only. Put reusable shell logic in `lib/`; put validation/build workflows in `scripts/`; keep Spack source manifests in `envs/`.
+- Do not add new top-level source directories unless they are a durable product concept. Generated state, scratch files, caches, build products, and local runtime artifacts belong outside the repo root, preferably under `~/.automata/draccus`, with repo-root symlinks only when existing launchers need compatibility.
+- Keep implementation and tests adjacent. Do not introduce a broad top-level `tests/` tree for this repo's own scripts.
+
+## Isolated rootfs
+
+- `rootfs/` is a generated runtime artifact, not source. It may be a symlink to externalized state under `~/.automata/draccus`, but it must never be committed.
+- `draccus-run` and `draccus-offline` mount the rootfs read-only. Runtime writes must go only to explicit writable surfaces: `/workspace`, `/tmp`, `/run`, `/opt/draccus/cache`, `/opt/draccus/build`, and narrowly-scoped state such as `/var/intel` when documented.
+- Do not rely on accidental host filesystem state inside the namespace. Host inputs must be explicit launcher mounts or `--ro-bind-data` overlays with documented purpose. Do not bake host-specific `/etc/hosts`, `/etc/resolv.conf`, shell startup files, user homes, or Nix/profile paths into the production rootfs.
+- NVIDIA driver libraries and device nodes are the allowed host escape hatch for GPU execution; they must remain discoverable and auditable through `lib/draccus-nvidia-mounts.sh`.
 
 ## Cursor → Coco (TraeCLI) subagents
 

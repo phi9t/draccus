@@ -1,0 +1,36 @@
+---
+description: Delegate isolated research/planning to Coco (TraeCLI) via MCP subagents
+alwaysApply: true
+---
+
+# Coco subagent delegation (Cursor → TraeCLI)
+
+When a task is a **good fit for a separate context** (broad codebase search, architecture plan, or parallel investigation), prefer the **Coco MCP server** tool named **`Agent`** (often shown as `mcp_coco_Agent` — the server key is `coco` in `.cursor/mcp.json`).
+
+## When to delegate
+
+- Multi-step **read-only** exploration across many files (use **`Explore`**).
+- **Implementation planning** or trade-off analysis without editing yet (use **`Plan`**).
+- **General multi-step work** that should run in Coco’s subprocess with its own tools (use **`general-purpose`**) — only when the user explicitly wants code or command execution delegated out of this chat.
+
+## How to call the tool
+
+Pass:
+
+- **`description`**: 3–5 word summary.
+- **`prompt`**: Self-contained instructions (cwd, paths, exact deliverable, output shape). Subagents do **not** see this conversation; put critical constraints in the prompt.
+- **`subagent_type`**: one of `Explore`, `Plan`, `general-purpose`, `issue-validator` (per Coco MCP schema).
+
+## Draccus-specific constraints in prompts
+
+When the task touches this repo, state in the **`prompt`** that the agent must respect **`AGENTS.md`** invariants (do-not-shadow list, two-layer Python, no host paths in bwrap scripts, pinned CUDA/torch/jax, `cuda_arch=100`).
+
+## Safety defaults
+
+- Prefer **`Explore`** or **`Plan`** for investigation and design.
+- Use **`general-purpose`** for writes or command execution only with **clear user intent**; narrow the prompt (which paths, which commands, verification step).
+- Summarize Coco’s result for the user; subagent output may not be user-visible in the UI.
+
+## Requirements
+
+- **`coco`** must be installed and on **`PATH`**; after changing **`.cursor/mcp.json`**, restart Cursor.

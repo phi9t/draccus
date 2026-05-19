@@ -1,0 +1,203 @@
+#+TITLE: Repo Hygiene — Task Tracker
+#+STARTUP: overview logdone
+#+TODO: TODO(t) IN-PROGRESS(i!) BLOCKED(b@/!) | DONE(d!) WONTFIX(w@/!)
+#+PROPERTY: header-args :eval no
+#+FILETAGS: :workstream:repo-hygiene:
+
+* Overview
+This tracker drives the work described in [[file:design.md][design.md]].
+Read design.md §6 and AGENTS.md before claiming a task.
+
+Conventions:
+- Each task has :OWNER:, :STARTED:, :FINISHED:, :DEPENDS: properties.
+- Logs go under nested =** Log= sections or in =artifacts/=.
+- This workstream is hygiene-only unless the user explicitly expands scope.
+
+* Decisions
+
+** Artifact destination layout
+   :PROPERTIES:
+   :DECIDED_BY: user
+   :DECIDED_ON: 2026-05-14
+   :END:
+   - Choice: move local artifacts under =$HOME/.automata/draccus=.
+   - Proposed run directory: =$HOME/.automata/draccus/repo-hygiene-20260514T062236Z=.
+   - Rationale: keeps generated state out of the checkout while preserving it for inspection or rollback.
+
+** Symlink policy
+   :PROPERTIES:
+   :DECIDED_BY: Codex
+   :DECIDED_ON: 2026-05-14T06:34:00Z
+   :END:
+   - Choice: symlink =rootfs=, =state=, =cache=, and =build= from repo root to the relocated copies under =$HOME/.automata/draccus/repo-hygiene-20260514T062236Z/repo-root=.
+   - Rationale: these names are part of the Draccus bundle layout used by existing launchers and validation scripts, but their contents are generated/local state.
+
+** Keep vs relocate list
+   :PROPERTIES:
+   :DECIDED_BY: Codex
+   :DECIDED_ON: 2026-05-14T06:27:00Z
+   :END:
+   - Keep as repo source/config candidates: =.agents/=, =.cursor/=, =.trae/COCO_MODELS.md=, =docs/coco-cursor-delegation.md=, =scripts/coco-probe-models.sh=, =scripts/uv_overrides.txt=, =envs/common/=, =draccus-core-thesis.txt=.
+   - Relocate as generated/runtime state: =rootfs/=, =state/=, =cache/=, =build/=, =pkg/=, =.cache/=, =.nv/=, =.cargo/=, =.cmake/=, =.ruff_cache/=, =.venv/=, =.spack/=, =.intel/=, =intel/=, =_cin/=, =_cin2/=, =_ckeep/=, =_cuda_extract/=, =_cuda_try/=, =_cuda_try2/=, =.trae/artifacts/=, =.trae/worktrees/=, =.bash_history=, =.python_history=.
+   - Unknown scratch to relocate rather than delete: =Error:=, =typescript=.
+
+** Validation limitation
+   :PROPERTIES:
+   :DECIDED_BY: Codex
+   :DECIDED_ON: 2026-05-14T06:40:00Z
+   :END:
+   - Choice: validation remains red because =./scripts/validate-static.sh= Check 10 optional bwrap probe exits 1 with the pre-existing =GLIBC_2.38= error when entering the namespace.
+   - Rationale: shell lint, shfmt, ruff, YAML, Spack YAML structural checks, do-not-shadow consistency, rootfs stamp, launcher executability, and pinned uv/pip shim static checks all pass; functional bwrap repair is outside this hygiene-first workstream.
+
+* Phase 0 — Snapshot and classify :phase0:
+** DONE P0.1 Capture baseline status and artifact inventory
+   :PROPERTIES:
+   :ID:       P0.1
+   :OWNER:    Codex
+   :STARTED:  2026-05-14T06:22:36Z
+   :FINISHED: 2026-05-14T06:25:05Z
+   :DEPENDS:
+   :END:
+   DoD: baseline git status, top-level inventory, and disk usage saved in =artifacts/=.
+   #+begin_src bash
+   git status --short > .workstream/repo-hygiene/artifacts/p0-status-before.txt
+   find . -maxdepth 1 -mindepth 1 -printf '%y %p\n' | sort > .workstream/repo-hygiene/artifacts/p0-top-level-before.txt
+   du -sh .[!.]* * 2>/dev/null | sort -h > .workstream/repo-hygiene/artifacts/p0-du-before.txt
+   #+end_src
+   ** Artifacts
+   - =artifacts/p0-status-before.txt=
+   - =artifacts/p0-top-level-before.txt=
+   - =artifacts/p0-du-before.txt=
+
+** DONE P0.2 Classify top-level untracked paths
+   :PROPERTIES:
+   :ID:       P0.2
+   :OWNER:    Codex
+   :STARTED:  2026-05-14T06:25:05Z
+   :FINISHED: 2026-05-14T06:27:00Z
+   :DEPENDS:  P0.1
+   :END:
+   DoD: =* Decisions / Keep vs relocate list= filled.
+
+* Phase 1 — Relocate artifacts :phase1:
+** DONE P1.1 Create destination and move generated/runtime state
+   :PROPERTIES:
+   :ID:       P1.1
+   :OWNER:    Codex
+   :STARTED:  2026-05-14T06:27:00Z
+   :FINISHED: 2026-05-14T06:32:00Z
+   :DEPENDS:  P0.2
+   :END:
+   DoD: selected artifacts moved under =$HOME/.automata/draccus/repo-hygiene-20260514T062236Z= and manifest saved.
+   Candidate move list:
+   - =rootfs/=
+   - =state/=
+   - =cache/=
+   - =build/=
+   - =.cache/=
+   - =.nv/=
+   - =.cargo/=
+   - =.cmake/=
+   - =.ruff_cache/=
+   - =.venv/=
+   - =_cin/=
+   - =_cin2/=
+   - =_ckeep/=
+   - =_cuda_extract/=
+   - =_cuda_try/=
+   - =_cuda_try2/=
+   - =pkg/=
+   - =intel/=
+   - =.intel/=
+   - local shell/history scratch files as classified in P0.2.
+   ** Artifacts
+   - =artifacts/p1-move-manifest.txt=
+   - =artifacts/p1-move-errors.log= records the expected first failed unprivileged =rootfs= move before retrying with =sudo mv=.
+
+** DONE P1.2 Preserve local agent/config artifacts
+   :PROPERTIES:
+   :ID:       P1.2
+   :OWNER:    Codex
+   :STARTED:  2026-05-14T06:32:00Z
+   :FINISHED: 2026-05-14T06:33:00Z
+   :DEPENDS:  P0.2
+   :END:
+   DoD: local agent/config directories either kept in repo as intentional untracked source candidates or moved with manifest entries.
+   Candidate review list:
+   - =.agents/=
+   - =.claude/=
+   - =.cursor/=
+   - =.trae/=
+   - =docs/coco-cursor-delegation.md=
+   - =scripts/coco-probe-models.sh=
+   - =draccus-core-thesis.txt=
+   - =typescript=
+   - =Error:=
+   ** Log
+   - Kept source/config candidates in place: =.agents/=, =.cursor/=, =.trae/COCO_MODELS.md=, =docs/coco-cursor-delegation.md=, =scripts/coco-probe-models.sh=, =scripts/uv_overrides.txt=, =envs/common/=, =draccus-core-thesis.txt=.
+   - Relocated local generated subdirectories =.trae/artifacts/= and =.trae/worktrees/=.
+   - Relocated unknown scratch files =Error:= and =typescript= instead of deleting them.
+
+* Phase 2 — Reconnect required paths :phase2:
+** DONE P2.1 Symlink runtime-required bundle paths back to relocated state
+   :PROPERTIES:
+   :ID:       P2.1
+   :OWNER:    Codex
+   :STARTED:  2026-05-14T06:33:00Z
+   :FINISHED: 2026-05-14T06:34:00Z
+   :DEPENDS:  P1.1
+   :END:
+   DoD: =rootfs=, =state=, =cache=, and =build= policy implemented and recorded under =* Decisions / Symlink policy=.
+   ** Artifacts
+   - =artifacts/p2-symlinks.txt=
+
+* Phase 3 — Ignore rules :phase3:
+** DONE P3.1 Update .gitignore for local artifacts
+   :PROPERTIES:
+   :ID:       P3.1
+   :OWNER:    Codex
+   :STARTED:  2026-05-14T06:34:00Z
+   :FINISHED: 2026-05-14T06:36:00Z
+   :DEPENDS:  P1.2
+   :END:
+   DoD: `.gitignore` ignores local home/cache/scratch artifacts without hiding tracked source candidates.
+   ** Log
+   - Added directory and symlink ignore entries for generated bundle state: =rootfs=, =state=, =cache=, =build=.
+   - Added local scratch/cache ignores for CUDA extraction, package extraction, home-style caches, and Trae runtime artifacts.
+
+* Phase 4 — Validate and hand back :phase4:
+** DONE P4.1 Run status and validation checks
+   :PROPERTIES:
+   :ID:       P4.1
+   :OWNER:    Codex
+   :STARTED:  2026-05-14T06:36:00Z
+   :FINISHED: 2026-05-14T06:40:00Z
+   :DEPENDS:  P2.1 P3.1
+   :END:
+   DoD: post-cleanup status and validation log saved; pre-existing failures documented under =* Decisions / Validation limitation=.
+   #+begin_src bash
+   git status --short > .workstream/repo-hygiene/artifacts/p4-status-after.txt
+   ./scripts/validate-static.sh 2>&1 | tee .workstream/repo-hygiene/artifacts/p4-validate-static.log
+   #+end_src
+   ** Artifacts
+   - =artifacts/p4-status-after.txt=
+   - =artifacts/p4-du-after.txt=
+   - =artifacts/p4-dest-du.txt=
+   - =artifacts/p4-check-ignore.txt=
+   - =artifacts/p4-relocated-layout.txt=
+   - =artifacts/p4-validate-static.log=
+   - =artifacts/p4-validate-static-rerun.log=
+   - =artifacts/p4-validate-static-rerun.rc= (=validate-static rc=1=)
+   ** Log
+   - Repo root generated state is reduced to symlinks: =rootfs=, =state=, =cache=, =build=.
+   - Relocated artifact tree reports total size =182G=.
+   - =git status --short= no longer lists generated cache/build/rootfs scratch paths.
+   - =./scripts/validate-static.sh= rerun exits 1 due to optional bwrap probe =GLIBC_2.38= failure, matching the pre-hygiene baseline.
+
+* Retrospective
+- Surprises: =rootfs/= was root-owned and required =sudo mv=; ordinary user =mv= failed at =renameat2(...)=EACCES=.
+- Automate next time: a small relocation script could classify top-level generated paths and create symlinks deterministically.
+- Doc gaps: clarify whether repo-local bundle state should be physical directories, symlinks, or configurable external paths.
+
+* Notes
+Free-form scratchpad. Promote stable facts to DESIGN.md on close.
