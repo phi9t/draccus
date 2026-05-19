@@ -21,6 +21,16 @@ draccus_append_nvidia_mounts() {
     _drv_arr+=(--ro-bind-try "$d" "$d")
   }
 
+  draccus__maybe_ro_bind_so() {
+    local shim="$1"
+    local canon=""
+    [[ -e "$shim" ]] || return 0
+    canon="$(readlink -f "$shim" 2>/dev/null || true)"
+    [[ -z "${canon:-}" ]] && canon="$shim"
+    [[ -r "$canon" ]] || return 0
+    _drv_arr+=(--ro-bind-try "$canon" "$shim")
+  }
+
   local dev
 
   # Classic device nodes + full caps directory where present (never assume specific cap minor numbers).
@@ -44,13 +54,12 @@ draccus_append_nvidia_mounts() {
 
   draccus__add_driver_dir "/usr/local/nvidia"
 
+  local canon ldconfig_seen=false
   if command -v ldconfig >/dev/null 2>&1; then
-    local canon resolved
     while IFS= read -r canon; do
       [[ "$canon" == /* ]] || continue
-      resolved="$(readlink -f "$canon" 2>/dev/null || true)"
-      [[ -z "$resolved" ]] && resolved="$canon"
-      draccus__add_driver_dir "$(dirname "$resolved")"
+      ldconfig_seen=true
+      draccus__maybe_ro_bind_so "$canon"
     done < <(
       LC_ALL=C ldconfig -p 2>/dev/null \
         | LC_ALL=C awk '
@@ -58,10 +67,22 @@ draccus_append_nvidia_mounts() {
               for (i = 1; i <= NF; i++) if ($i == "=>") return $(i + 1)
               return ""
             }
-            /=>/ && $0 ~ /(libcuda\.so|libnvidia-ml\.so|libcudadebugger\.so)/ {
+            /=>/ && $0 ~ /(libcuda\.so\.1|libnvidia-ml\.so\.1|libcudadebugger\.so\.1)/ {
               p = path(); if (p ~ /^\//) print p
             }'
     )
+  fi
+
+  # If ld.so.cache is broken (often Nix + vendor glibc hybrids), ldconfig emits nothing.
+  # Bind individual driver SONAME shim paths instead of whole lib dirs: binding a host
+  # system lib directory would shadow rootfs glibc and break rootfs binaries.
+  if [[ "$ldconfig_seen" != true ]]; then
+    draccus__maybe_ro_bind_so /usr/lib/x86_64-linux-gnu/libcuda.so.1
+    draccus__maybe_ro_bind_so /usr/lib64/libcuda.so.1
+    draccus__maybe_ro_bind_so /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1
+    draccus__maybe_ro_bind_so /usr/lib64/libnvidia-ml.so.1
+    draccus__maybe_ro_bind_so /usr/lib/x86_64-linux-gnu/libcudadebugger.so.1
+    draccus__maybe_ro_bind_so /usr/lib64/libcudadebugger.so.1
   fi
 
 }
