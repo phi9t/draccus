@@ -41,9 +41,25 @@ mkdir -p \
   "$DRACCUS_STATE/view" \
   "$DRACCUS_STATE/var-intel" \
   "$DRACCUS_CACHE/spack" \
+  "$DRACCUS_CACHE/spack-readonly-config" \
+  "$DRACCUS_CACHE/spack-readonly-envs" \
   "$DRACCUS_CACHE/uv" \
   "$DRACCUS_CACHE/huggingface" \
   "$DRACCUS_BUILD/stage"
+
+cat >"$DRACCUS_CACHE/spack-readonly-config/config.yaml" <<'EOF'
+config:
+  locks: false
+EOF
+
+if [[ -d "$DRACCUS_STATE/spack/var/spack/environments" ]]; then
+  for draccus_env_dir in "$DRACCUS_STATE/spack/var/spack/environments"/*; do
+    [[ -d "$draccus_env_dir" ]] || continue
+    draccus_env_name="$(basename "$draccus_env_dir")"
+    mkdir -p "$DRACCUS_CACHE/spack-readonly-envs/$draccus_env_name"
+    cp -a "$draccus_env_dir/." "$DRACCUS_CACHE/spack-readonly-envs/$draccus_env_name/"
+  done
+fi
 
 # shellcheck source=../lib/draccus-view-dir.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/draccus-view-dir.sh"
@@ -81,9 +97,9 @@ fi
 # Pip/pip3 from Spack's py-pip are shadowed by bundle shims mounted at /opt/draccus/shims (prepended).
 # For infra/debug (base-sys ahead of base-ml), set DRACCUS_PREFER_SYS_PATH=1 on the host or use
 # bin/draccus-debug-shell.
-draccus_path_views="/opt/draccus/shims:/opt/draccus/view/base-ml/bin:/opt/draccus/view/base-sys/bin"
+draccus_path_views="/opt/draccus/shims:/opt/draccus/view/base-ml/bin:/opt/draccus/view/base-sys/bin:/opt/draccus/spack/bin:/opt/draccus/cache/starship/bin"
 if [[ "${DRACCUS_PREFER_SYS_PATH:-0}" =~ ^(1|true|yes)$ ]]; then
-  draccus_path_views="/opt/draccus/shims:/opt/draccus/view/base-sys/bin:/opt/draccus/view/base-ml/bin"
+  draccus_path_views="/opt/draccus/shims:/opt/draccus/view/base-sys/bin:/opt/draccus/view/base-ml/bin:/opt/draccus/spack/bin:/opt/draccus/cache/starship/bin"
 fi
 
 # Writable /opt (tmpfs): Intel oneAPI prerequisites probe writability under /opt.
@@ -126,6 +142,7 @@ exec "$BWRAP" \
   --setenv SPACK_ML_VIEW /opt/draccus/view/base-ml \
   --setenv DRACCUS_SYS_VIEW /opt/draccus/view/base-sys \
   --setenv DRACCUS_ML_VIEW /opt/draccus/view/base-ml \
+  --setenv SPACK_USER_CONFIG_PATH /opt/draccus/cache/spack-readonly-config \
   --setenv SPACK_USER_CACHE_PATH /opt/draccus/cache/spack \
   --setenv UV_CACHE_DIR /opt/draccus/cache/uv \
   --setenv UV_LINK_MODE copy \
@@ -134,6 +151,7 @@ exec "$BWRAP" \
   --setenv CUDA_ROOT "$DRACCUS_RESOLVED_CUDA_ROOT" \
   --setenv TORCH_CUDA_ARCH_LIST "10.0" \
   --setenv PYTHONNOUSERSITE "1" \
+  --setenv PYTHONPATH "/opt/draccus/view/base-ml/lib/python3.12/site-packages" \
   --setenv HOME /workspace \
   --setenv DRACCUS_WORKSPACE /workspace \
   --setenv PATH "${draccus_path_views}:/opt/draccus/host-bin:${DRACCUS_BWRAP_CUDA_BIN_PREFIX:-}/usr/local/nvidia/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \

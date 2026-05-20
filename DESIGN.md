@@ -51,12 +51,12 @@ This directory **is** the Draccus bundle. Physical storage may live anywhere; la
 | **Canonical prefix inside bwrap** | `/opt/draccus` only — never the host path. |
 | **Spack checkout & installs** | Bound from `$DRACCUS_BUNDLE/state/spack` → `/opt/draccus/spack` |
 | **Views** | `$DRACCUS_BUNDLE/state/view/{base-sys,base-ml}` → `/opt/draccus/view/...` |
-| **Caches / build** | `$DRACCUS_BUNDLE/cache`, `$DRACCUS_BUNDLE/build` |
+| **Caches / build** | `$DRACCUS_BUNDLE/cache`, `$DRACCUS_BUNDLE/build`; runtime shell metadata lives under `cache/draccus-shell`, `cache/spack-readonly-*`, and `cache/starship` |
 | **Pinned rootfs** | `$DRACCUS_BUNDLE/rootfs` → `/` inside the namespace |
 | **Environment sources (VC)** | `envs/base-sys/spack.yaml`, `envs/base-ml/spack.yaml` (mirror under `/opt/draccus/envs` only after copy/bootstrap; authoritative copies live here in git) |
 | **Launchers** | `bin/draccus-run`, `bin/draccus-build`, `bin/draccus-offline`, `bin/draccus-shell`, `bin/draccus-debug-shell`, `bin/draccus-probe`, `bin/draccus-uv`, `bin/draccus-project-init` |
 | **Shims (PATH-prepended ahead of views)** | `shims/{pip,pip3}` → `/opt/draccus/shims` inside the namespace; see §8.2 |
-| **Pinned tool versions (foundation)** | `scripts/uv-version.env` (uv pin + sha256), `scripts/uv_overrides.txt` (DO_NOT_SHADOW constraints) |
+| **Pinned tool versions (foundation/runtime)** | `scripts/uv-version.env` (uv pin + sha256), `scripts/starship-version.env` (interactive prompt binary pin + sha256), `scripts/uv_overrides.txt` (DO_NOT_SHADOW constraints) |
 | **Rootfs bootstrap** | `scripts/bootstrap-rootfs.sh` (Docker export of `nvidia/cuda:13.1.1-cudnn-devel-ubuntu24.04` by default; installs pinned `uv` into `rootfs/usr/local/bin/uv`; set `DRACCUS_ROOTFS_MODE=debootstrap` for legacy Debian bookworm) |
 | **Validation** | `scripts/validate-static.sh` (Gate 0, GPU-free), `scripts/validate-all.sh` (14-gate full suite), plus per-gate scripts under `scripts/` |
 | **Development enforcement** | `.pre-commit-config.yaml` (shellcheck + shfmt + ruff + Gate 0 on every commit), `AGENTS.md` / `CLAUDE.md` (persistent agent-session rules) |
@@ -134,6 +134,7 @@ $DRACCUS_BUNDLE/
 │                  draccus-debug-shell, draccus-probe, draccus-uv, draccus-project-init
 ├── lib/           draccus-env.sh, draccus-bwrap-env.sh, draccus-nvidia-mounts.sh,
 │                  draccus-project.sh, draccus-uv.sh, draccus-view-dir.sh
+├── host-bin/      nvidia-smi fallback; host driver-matched binary is overlaid here at runtime
 ├── shims/         pip, pip3                          ← bound RO at /opt/draccus/shims
 ├── rootfs/        pinned distro rootfs (contains pinned uv at /usr/local/bin/uv)
 ├── state/
@@ -147,8 +148,8 @@ $DRACCUS_BUNDLE/
 │   └── common/rootfs-externals.yaml      ← shared externals (gcc, git, cuda from rootfs)
 ├── scripts/       bootstrap-rootfs.sh, validate-*.sh (Gate 0–13),
 │                  validate_foundation.py, validate_uv_layering.sh,
-│                  uv-version.env, uv_overrides.txt, refresh-spack-lockfiles.sh,
-│                  prune-draccus.sh
+│                  uv-version.env, starship-version.env, uv_overrides.txt,
+│                  refresh-spack-lockfiles.sh, prune-draccus.sh
 ├── projects/      _template/ (tracked; per-project venvs are gitignored)
 ├── docs/          tech-blog-hello-draccus.md, coco-cursor-delegation.md
 ├── .workstream/   <slug>/{design.md, tracker.org, artifacts/} per non-trivial feature
@@ -170,13 +171,14 @@ Both launchers are 99% identical; the only meaningful diff is **bind mode**:
 | `envs/` → `/opt/draccus/envs` | `--ro-bind` | `--bind` |
 | `cache/`, `build/`, `$workspace` | `--bind` | `--bind` |
 
-Everything else — namespaces (`--unshare-user/ipc/pid/uts`), proc/dev/sys, tmpfs `/tmp` and `/run`, env contract — is shared. `draccus-offline` is `draccus-run` + `--unshare-net`. `draccus-shell` is `draccus-run bash` with **base-ml before base-sys** on `PATH` (Torch/JAX). `draccus-debug-shell` is the same except **base-sys before base-ml** (infra/debug).
+Everything else — namespaces (`--unshare-user/ipc/pid/uts`), proc/dev/sys, tmpfs `/tmp` and `/run`, env contract — is shared. `draccus-offline` is `draccus-run` + `--unshare-net`. `draccus-shell` is an opinionated interactive layer on top of `draccus-run`: it enters a controlled `zsh`, activates Spack `base-ml`, activates the workspace uv venv, and configures a compact Starship prompt. `draccus-debug-shell` keeps the older debug shape: same sandbox, but **base-sys before base-ml** on `PATH` for infra/toolchain work.
 
 | Mode | Command | Spack writable | Network |
 |------|---------|------------------|---------|
 | Run | `bin/draccus-run` | No | Yes unless offline |
 | Build | `bin/draccus-build` | Yes | Yes |
 | Offline | `bin/draccus-offline` | No | No (`--unshare-net`) |
+| Shell | `bin/draccus-shell` | No | Yes unless offline wrapper used |
 
 **Device pass-through:** NVIDIA device nodes and `/usr/local/nvidia` when present; `/dev/infiniband` when present.
 
@@ -187,6 +189,48 @@ Everything else — namespaces (`--unshare-user/ipc/pid/uts`), proc/dev/sys, tmp
 - **Host diagnostics** (`/opt/draccus/host-bin`). Runtime-only host tools that must match the driver, currently `nvidia-smi`, are mounted over bundle fallbacks in `/opt/draccus/host-bin`. This keeps host binaries out of the rootfs while avoiding broad host `/usr/bin` binds.
 - **CUDA toolchain discovery** (`lib/draccus-bwrap-env.sh`). Prefers Spack `view/base-ml/bin/nvcc` when present, falls back to rootfs `/usr/local/cuda*/bin/nvcc` (Docker layout). Exports `DRACCUS_RESOLVED_CUDA_HOME` so the launcher can set `CUDA_HOME`/`CUDA_ROOT` correctly. Globs all `cuda-*/bin` directories and stacks them into `PATH`/`LD_LIBRARY_PATH`. This is what makes the bundle usable *before* Spack is bootstrapped — you can `draccus-build` with only the Docker rootfs in place.
 
+### 5.2 `draccus-run`: read-only runtime setup
+
+`draccus-run` is the canonical non-mutating runtime. It deliberately mounts `state/spack`, `state/view`, and `envs` read-only; this is the main line of defense against accidental foundation drift during training, debugging, or package installation.
+
+That read-only contract creates two practical issues for Spack commands:
+
+1. `spack find` and related inspection commands try to create DB lock files under `/opt/draccus/spack/opt/spack/.spack-db`.
+2. `spack env activate base-ml` constructs an environment transaction lock under `/opt/draccus/spack/var/spack/environments/base-ml/.spack-env`.
+
+`draccus-run` handles both without making the foundation writable:
+
+- It writes `/opt/draccus/cache/spack-readonly-config/config.yaml` with `config: locks: false` and exports `SPACK_USER_CONFIG_PATH=/opt/draccus/cache/spack-readonly-config`. This is runtime-only configuration in a writable cache, not a mutation to the Spack checkout.
+- It mirrors managed environment metadata from `/opt/draccus/spack/var/spack/environments/*` into `/opt/draccus/cache/spack-readonly-envs/*`. Only metadata is copied; packages and views still resolve from `/opt/draccus/spack/opt/spack` and `/opt/draccus/view`.
+- It puts `/opt/draccus/cache/starship/bin` on `PATH` so `draccus-shell` can bootstrap Starship into a writable runtime cache and then use it inside the namespace.
+
+These accommodations are for runtime usability. Any operation that concretizes, installs, removes, rewrites environment manifests, or modifies views still belongs in `draccus-build`.
+
+### 5.3 `draccus-shell`: interactive launch sequence
+
+`draccus-shell` is the researcher-facing path and has a stricter user-experience contract than `draccus-run <cmd>`.
+
+Before entering the namespace, it prepares:
+
+1. **Pinned Starship binary.** `scripts/starship-version.env` pins the release URL and sha256. If `cache/starship/bin/starship` is missing or has the wrong version, `draccus-shell` downloads, verifies, and installs it under the externalized Draccus cache. If host-side `curl`, `tar`, or `sha256sum` are missing, the shell still starts and falls back to a plain zsh prompt.
+2. **Controlled zsh startup directory.** It writes `cache/draccus-shell/zsh/.zshenv`, `cache/draccus-shell/zsh/init.zsh`, and `cache/draccus-shell/starship.toml`, then launches `zsh` via `draccus-run` with `ZDOTDIR=/opt/draccus/cache/draccus-shell/zsh` and `SHELL=/opt/draccus/view/base-sys/bin/zsh`.
+
+Inside the namespace, zsh startup runs in this order:
+
+1. Source `/opt/draccus/spack/share/spack/setup-env.sh`.
+2. Wrap the Spack shell function so `spack env activate <managed-env>` rewrites names like `base-ml` to `/opt/draccus/cache/spack-readonly-envs/base-ml`. Direct path activations are left alone.
+3. Activate mirrored `base-ml` by default if no Spack env is already active.
+4. Activate `/workspace/.venv` after Spack activation if it exists. This order matters: Spack activation prepends view paths, and the uv venv must be re-prepended so project packages like `rich` resolve from `.venv` while foundation packages like `torch` still resolve from `base-ml`.
+5. Set `STARSHIP_CONFIG=/opt/draccus/cache/draccus-shell/starship.toml` and initialize Starship for interactive shells.
+
+The prompt is intentionally short and operational:
+
+```text
+spack:base-ml uv:.venv ~ >
+```
+
+It shows only the active Spack environment, the active uv virtualenv, the current directory, and the command character. Git branch/status are intentionally omitted to keep the signal focused on the layered runtime state.
+
 ---
 
 ## 6. Environment contract (set by every launcher)
@@ -195,20 +239,35 @@ Everything else — namespaces (`--unshare-user/ipc/pid/uts`), proc/dev/sys, tmp
 DRACCUS_PREFIX=/opt/draccus
 SPACK_ROOT=/opt/draccus/spack
 SPACK_{SYS,ML}_VIEW + DRACCUS_{SYS,ML}_VIEW   ← same path, two names
+SPACK_USER_CONFIG_PATH=/opt/draccus/cache/spack-readonly-config
 SPACK_USER_CACHE_PATH=/opt/draccus/cache/spack
 UV_CACHE_DIR=/opt/draccus/cache/uv
+UV_LINK_MODE=copy
 HF_HOME=/opt/draccus/cache/huggingface
 CUDA_HOME, CUDA_ROOT       ← Spack view if nvcc present, else rootfs CUDA
 TORCH_CUDA_ARCH_LIST=10.0  ← sacrosanct, B200
 PYTHONNOUSERSITE=1         ← kills ~/.local site-packages leakage
+PYTHONPATH=/opt/draccus/view/base-ml/lib/python3.12/site-packages
 HOME=/workspace            ← every project sees its own $HOME
-PATH = /opt/draccus/shims : base-ml/bin : base-sys/bin : <rootfs-cuda-bins> : /usr/local/sbin:/usr/local/bin:...
+PATH = /opt/draccus/shims : base-ml/bin : base-sys/bin : /opt/draccus/spack/bin : /opt/draccus/cache/starship/bin : <rootfs-cuda-bins> : /usr/local/sbin:/usr/local/bin:...
 LD_LIBRARY_PATH = /usr/local/nvidia/lib(64) : <rootfs-cuda-lib64> : /usr/local/cuda/lib : base-ml/lib(64)
 ```
 
 `/opt/draccus/shims` is always first — it provides `pip`/`pip3` stubs that exit with a clear "use draccus-uv pip" message, shadowing both `py-pip` in the base-ml view and any host-provided pip in the rootfs. See §8.2 for the rationale.
 
-After the shims, the default `PATH` ordering — `base-ml` *first*, then `base-sys` — means `python` resolves to the ML foundation (torch/jax) out of the box. Set `DRACCUS_PREFER_SYS_PATH=1` (or use `draccus-debug-shell`) to reverse the order for infra/toolchain work; shims stay first either way. Spack views win over rootfs, and rootfs CUDA only fills in where Spack hasn't. `uv` itself resolves from the rootfs at `/usr/local/bin/uv` (pinned in `scripts/uv-version.env`, installed by `scripts/bootstrap-rootfs.sh`).
+After the shims, the default `PATH` ordering — `base-ml` *first*, then `base-sys` — means `python` resolves to the ML foundation (torch/jax) out of the box. `/opt/draccus/spack/bin` is also on PATH so `spack` is available for inspection. `PYTHONPATH` points at the flat base-ml site-packages directory so project venv Python can still see the foundation view after `.venv` activation. Set `DRACCUS_PREFER_SYS_PATH=1` (or use `draccus-debug-shell`) to reverse the base view order for infra/toolchain work; shims stay first either way. Spack views win over rootfs, and rootfs CUDA only fills in where Spack hasn't. `uv` itself resolves from the rootfs at `/usr/local/bin/uv` (pinned in `scripts/uv-version.env`, installed by `scripts/bootstrap-rootfs.sh`).
+
+Additional `draccus-shell`-only variables:
+
+```
+ZDOTDIR=/opt/draccus/cache/draccus-shell/zsh
+SHELL=/opt/draccus/view/base-sys/bin/zsh
+STARSHIP_CONFIG=/opt/draccus/cache/draccus-shell/starship.toml
+SPACK_ENV=/opt/draccus/cache/spack-readonly-envs/base-ml   ← default after startup
+VIRTUAL_ENV=/workspace/.venv                               ← if .venv exists
+```
+
+`SPACK_ENV` points at the writable metadata mirror by design. That path is not the package root; the packages and views remain the read-only foundation.
 
 ---
 
@@ -322,8 +381,9 @@ Values below come from `.workstream/spack-envs-bootstrap/` execution on a **warm
 
 Operational reminders promoted from that run:
 
-- **`draccus-run` keeps `/opt/draccus/spack` read-only** — `spack env activate` is not needed (and fails on the RO mount); `PATH` already points at the ML view by default.
+- **`draccus-run` keeps `/opt/draccus/spack` read-only** — `spack` is available for inspection with locks disabled through `/opt/draccus/cache/spack-readonly-config`; managed environment activation uses writable metadata mirrors under `/opt/draccus/cache/spack-readonly-envs`; mutating Spack operations belong in `draccus-build`; `PATH` already points at the ML view by default.
 - **`uv` toolchain** ships in the NVIDIA rootfs at `/usr/local/bin/uv` (`scripts/bootstrap-rootfs.sh`, pin in `scripts/uv-version.env`); **`pip`/`pip3`** resolve to `/opt/draccus/shims/…`, which instructs callers to use `draccus-uv pip`.
+- **`draccus-shell` launch contract** — controlled zsh, Starship prompt pinned by `scripts/starship-version.env`, mirrored `base-ml` active by default, workspace `.venv` active last, prompt shows `spack:<env>` and `uv:<env>`.
 - **JAX on CUDA 13 toolkit** — may need SONAME stubs for `libcublas` / `nvidia-*` layouts; see `.workstream/spack-envs-bootstrap/design.md` §7.8 and `.workstream/spack-envs-bootstrap/artifacts/p4.3-jax-nvidia-stubs.sh`.
 
 Further detail stays in `.workstream/spack-envs-bootstrap/design.md`, `tracker.org`, and per-gate logs under `.workstream/spack-envs-bootstrap/artifacts/`.
@@ -423,7 +483,8 @@ pre-commit install   # wires hooks into .git/hooks/pre-commit
 2. `draccus-build` once: clone Spack into `state/spack`, add mirrors, trust buildcache keys.
 3. `spack env create base-sys envs/base-sys/spack.yaml && spack install` inside `draccus-build`. Same for `base-ml`.
 4. `draccus-run` / `draccus-shell` for daily work: read-only foundation, writable workspace, `draccus-uv` for project-level packages layered on top.
-5. Pre-commit Gate 0 on every edit; full gate suite before merging anything Spack-touching.
+5. `draccus-shell` prepares runtime ergonomics in cache: Starship binary/config, zsh startup, read-only Spack config, and mirrored environment metadata.
+6. Pre-commit Gate 0 on every edit; full gate suite before merging anything Spack-touching.
 
 ---
 
@@ -464,12 +525,14 @@ CPU target (`x86_64_v3` vs `icelake`), rootfs distro flavor, pinned Spack commit
 | Bundle resolution | `lib/draccus-env.sh` |
 | CUDA toolchain resolution | `lib/draccus-bwrap-env.sh` |
 | NVIDIA device + driver mounts | `lib/draccus-nvidia-mounts.sh` |
+| Host diagnostic fallbacks | `host-bin/nvidia-smi` |
 | View-path helpers | `lib/draccus-view-dir.sh` |
 | Pip shims (PATH-prepended) | `shims/pip`, `shims/pip3` |
 | base-sys / base-ml specs | `envs/base-sys/spack.yaml`, `envs/base-ml/spack.yaml` |
 | Shared spack externals (gcc/git/cuda from rootfs) | `envs/common/rootfs-externals.yaml` |
 | Rootfs bootstrap (also installs pinned `uv`) | `scripts/bootstrap-rootfs.sh` |
 | Pinned uv version + sha256 | `scripts/uv-version.env` |
+| Pinned Starship version + sha256 | `scripts/starship-version.env` |
 | DO_NOT_SHADOW resolver constraints | `scripts/uv_overrides.txt` |
 | Gate 0 static validation | `scripts/validate-static.sh` |
 | Full validation suite | `scripts/validate-all.sh` |

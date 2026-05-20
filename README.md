@@ -57,7 +57,7 @@ draccus-uv pip install transformers datasets accelerate peft trl safetensors
 
 If `.venv` does not exist yet, `draccus-uv pip install ...` creates it with the canonical `--system-site-packages` layout before installing. It never installs project packages into the read-only foundation view.
 
-Inside `draccus-shell` or `draccus-run`, the `draccus-uv` wrapper is available as plain `uv` with all protections active. `draccus-shell` also activates the workspace `.venv` when it exists, so packages installed with `draccus-uv pip install ...` are on `python` by default in the interactive shell.
+Inside `draccus-shell` or `draccus-run`, the `draccus-uv` wrapper is available as plain `uv` with all protections active. `draccus-shell` starts a controlled zsh session, sources Spack's shell setup, activates the read-only `base-ml` environment by default, activates the workspace `.venv` when it exists, and uses Starship to show the active Spack and uv environments in the prompt.
 
 ### The do-not-shadow rule
 
@@ -243,7 +243,7 @@ Re-run `DRACCUS_ROOTFS_FORCE=1 ./scripts/bootstrap-rootfs.sh`.
 Normal. Spack pads install prefixes to a fixed width (`padded_length: 128` in `spack.yaml`) so compiled binaries can be relocated via buildcache without recompilation. The Python binary has its real Spack install prefix baked in, so `sys.path` shows paths like `/opt/draccus/spack/opt/spack/__spack_path_placeholder__/.../python-3.12.13-.../lib/python3.12`. What matters: the **view site-packages** (`/opt/draccus/view/base-ml/lib/python3.12/site-packages`) is always on `sys.path`, and that is where `import torch` / `jax` / `numpy` resolve from. The padded paths are a Spack implementation detail you never interact with directly.
 
 **`spack env activate` fails with "Read-only file system"**
-Expected. The Spack tree is mounted read-only inside `draccus-run` / `draccus-shell`. You do not need Spack shell activation for daily work -- `PATH` already points at the base-ml view. Use `draccus-build` when Spack must write (install, concretize, etc.).
+Expected for mutating Spack operations. `draccus-shell` already sources Spack's `setup-env.sh`, and `PATH` points at the base-ml view plus `/opt/draccus/spack/bin`. Read-only inspection commands such as `spack find` run with locks disabled via `/opt/draccus/cache/spack-readonly-config`. `spack env activate <managed-env>` activates a writable metadata mirror under `/opt/draccus/cache/spack-readonly-envs`, while the package tree and views still come from the immutable foundation. Use `draccus-build` when Spack must write (install, concretize, etc.).
 
 ## Design & reference
 
