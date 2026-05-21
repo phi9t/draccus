@@ -18,61 +18,66 @@ Fill before the dependent phase starts.
 
 ** Command grammar and help scope
    :PROPERTIES:
-   :DECIDED_BY:
-   :DECIDED_ON:
+   :DECIDED_BY: user-approved spec
+   :DECIDED_ON: 2026-05-21T19:24:46Z
    :END:
    - Choice: First surface is =shell=, =run=, =uv=, =doctor=, =notebook=, =build=, =project init=, =bundle show=, and =help=.
    - Rationale: Daily workflow first; local bundle packaging reserves =bundle= namespace.
 
 ** draccus.yaml schema v1
    :PROPERTIES:
-   :DECIDED_BY:
-   :DECIDED_ON:
+   :DECIDED_BY: user-approved spec
+   :DECIDED_ON: 2026-05-21T19:24:46Z
    :END:
    - Choice: Minimal schema: project name, optional bundle path, optional runs directory.
    - Rationale: Keep project contract explicit without pulling experiment policy into the first milestone.
 
 ** Project id and run id format
    :PROPERTIES:
-   :DECIDED_BY:
-   :DECIDED_ON:
+   :DECIDED_BY: user-approved spec
+   :DECIDED_ON: 2026-05-21T19:24:46Z
    :END:
    - Choice: Project id is project name from =draccus.yaml= plus path hash. Run id is timestamp plus optional sanitized name.
    - Rationale: Human-readable while avoiding collisions between workspaces with the same name.
 
 ** Default shared root
    :PROPERTIES:
-   :DECIDED_BY:
-   :DECIDED_ON:
+   :DECIDED_BY: user-approved spec
+   :DECIDED_ON: 2026-05-21T19:24:46Z
    :END:
    - Choice: =~/.automata/draccus= with =bundles/default=, =runs=, and =projects=.
    - Rationale: Keep generated state outside repositories and leave room for multiple bundles.
 
 ** Legacy entrypoint removal
    :PROPERTIES:
-   :DECIDED_BY:
-   :DECIDED_ON:
+   :DECIDED_BY: user-approved spec
+   :DECIDED_ON: 2026-05-21T19:24:46Z
    :END:
    - Choice: Remove legacy per-command entrypoints rather than shimming them.
    - Rationale: Make =draccus= the single source of truth.
 
 * Phase 0 — Preflight and decisions :phase0:
-** TODO P0.1 Capture current CLI and validation baseline
+** DONE P0.1 Capture current CLI and validation baseline
    :PROPERTIES:
    :ID:       P0.1
-   :OWNER:
-   :STARTED:
-   :FINISHED:
+   :OWNER:   codex-implementer
+   :STARTED: 2026-05-21T19:24:13Z
+   :FINISHED: 2026-05-21T19:24:46Z
    :DEPENDS:
    :END:
    DoD: current =bin/= surface, docs references, and Gate 0 baseline captured under artifacts.
 
-** TODO P0.2 Fill decisions
+*** Artifacts
+    - =.workstream/single-command-cli/artifacts/p0.1-bin-before.txt=
+    - =.workstream/single-command-cli/artifacts/p0.1-legacy-refs-before.txt=
+    - =.workstream/single-command-cli/artifacts/p0.1-validate-static-before.log=
+
+** DONE P0.2 Fill decisions
    :PROPERTIES:
    :ID:       P0.2
-   :OWNER:
-   :STARTED:
-   :FINISHED:
+   :OWNER:   codex-implementer
+   :STARTED: 2026-05-21T19:24:46Z
+   :FINISHED: 2026-05-21T19:24:46Z
    :DEPENDS:  P0.1
    :END:
    DoD: all subsections under =* Decisions= have =DECIDED_BY= and =DECIDED_ON=.

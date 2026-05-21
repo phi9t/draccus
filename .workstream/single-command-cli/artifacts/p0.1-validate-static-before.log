@@ -1,0 +1,155 @@
+=== CHECK 1: Shell lint (shellcheck) ===
+[WARN] shellcheck not in PATH, skipping shell lint checks
+
+=== CHECK 2: Shell format (shfmt) ===
+[PASS] shfmt: draccus-build
+[PASS] shfmt: draccus-offline
+[PASS] shfmt: draccus-probe
+[PASS] shfmt: draccus-project-init
+[PASS] shfmt: draccus-run
+[PASS] shfmt: draccus-shell
+[PASS] shfmt: draccus-debug-shell
+[PASS] shfmt: draccus-uv
+[PASS] shfmt: nvidia-smi
+[PASS] shfmt: draccus-project.sh
+[PASS] shfmt: draccus-uv.sh
+[PASS] shfmt: pip
+[PASS] shfmt: bootstrap-rootfs.sh
+[PASS] shfmt: prune-draccus.sh
+[PASS] shfmt: refresh-spack-lockfiles.sh
+[PASS] shfmt: validate-all.sh
+[PASS] shfmt: validate-base-ml.sh
+[PASS] shfmt: validate-base-sys.sh
+[PASS] shfmt: validate-project-overlay.sh
+[PASS] shfmt: validate_uv_layering.sh
+[PASS] shfmt: coco-probe-models.sh
+
+=== CHECK 3: Python lint (ruff) ===
+[WARN] ruff not in PATH, skipping Python lint checks
+
+=== CHECK 4: YAML lint (yamllint) ===
+[WARN] yamllint not in PATH, skipping YAML lint checks
+
+=== CHECK 5: Spack YAML structural check ===
+[PASS] spack.yaml exists: base-sys
+[PASS] spack.yaml exists: base-ml
+[PASS] base-sys: 'view:' present
+[PASS] base-sys: 'concretizer:' present
+[PASS] base-sys: 'specs:' present
+[PASS] base-ml: 'view:' present
+[PASS] base-ml: 'concretizer:' present
+[PASS] base-ml: 'specs:' present
+[PASS] base-sys: concretizer unify: true
+[PASS] base-ml: concretizer unify: true
+[PASS] base-ml: 'cuda_arch=100' present
+[PASS] base-ml: 'python@3.12' present
+
+=== CHECK 6: Do-not-shadow consistency ===
+[PASS] DO_NOT_SHADOW contains: torch
+[PASS] DO_NOT_SHADOW contains: jax
+[PASS] DO_NOT_SHADOW contains: jaxlib
+[PASS] DO_NOT_SHADOW contains: numpy
+[PASS] DO_NOT_SHADOW contains: scipy
+[PASS] DO_NOT_SHADOW contains: triton
+
+=== CHECK 7: Rootfs stamp ===
+[PASS] rootfs stamp exists and is non-empty
+
+=== CHECK 8: Launcher executability ===
+[PASS] executable: draccus-run
+[PASS] executable: draccus-build
+[PASS] executable: draccus-offline
+[PASS] executable: draccus-project-init
+[PASS] executable: draccus-shell
+[PASS] executable: draccus-debug-shell
+[PASS] executable: draccus-probe
+[PASS] executable: draccus-uv
+
+=== CHECK 9: pinned uv + pip shims (static) ===
+[PASS] uv-version.env exists
+[PASS] uv-version: semver + 64-hex sha256
+[PASS] shims directory: exactly pip + pip3
+[PASS] shims/pip executable
+[PASS] shims/pip3 present
+[PASS] shims/pip contains sentinel
+[PASS] shims/pip3 contains sentinel
+[PASS] draccus-run ro-binds bundle shims to /opt/draccus/shims
+[PASS] draccus-run ro-binds host-bin to /opt/draccus/host-bin
+[PASS] draccus-run PATH leads with /opt/draccus/shims
+[PASS] draccus-run PATH includes host-bin
+[PASS] draccus-run PATH includes spack bin
+[PASS] draccus-run PATH includes starship cache bin
+[PASS] draccus-shell sources Spack setup
+[PASS] draccus-run disables Spack locks for readonly inspection
+[PASS] draccus-run mirrors Spack env metadata for readonly activation
+[PASS] draccus-shell rewrites managed env activation to readonly mirror
+[PASS] draccus-shell launches zsh
+[PASS] draccus-shell configures starship
+[PASS] starship-version.env exists
+[PASS] draccus-run exports base-ml PYTHONPATH
+[PASS] draccus-run has no host_uv / DRACCUS_HOST_UV_BIN
+[PASS] host-bin/nvidia-smi fallback executable
+[PASS] draccus-uv delegates behavior to lib/draccus-uv.sh
+[PASS] draccus-uv auto-targets workspace .venv for pip installs
+[PASS] draccus-uv blocks direct foundation package installs
+[PASS] draccus-uv audits resolved install plans
+
+=== CHECK 10: bwrap probe (optional) ===
+[INFO] bwrap available, running draccus-probe...
+[outer] bwrap
+/usr/bin/bwrap
+bubblewrap 0.8.0
+
+[outer] gpu devices
+crw-rw-rw- 1 root root 195, 254 May  4 10:55 /dev/nvidia-modeset
+crw-rw-rw- 1 root root 510,   0 May  4 10:55 /dev/nvidia-uvm
+crw-rw-rw- 1 root root 510,   1 May  4 10:55 /dev/nvidia-uvm-tools
+crw-rw-rw- 1 root root 195,   0 May  4 10:55 /dev/nvidia0
+crw-rw-rw- 1 root root 195,   1 May  4 10:55 /dev/nvidia1
+crw-rw-rw- 1 root root 195,   2 May  4 10:55 /dev/nvidia2
+crw-rw-rw- 1 root root 195,   3 May  4 10:55 /dev/nvidia3
+crw-rw-rw- 1 root root 195,   4 May  4 10:55 /dev/nvidia4
+crw-rw-rw- 1 root root 195,   5 May  4 10:55 /dev/nvidia5
+crw-rw-rw- 1 root root 195,   6 May  4 10:55 /dev/nvidia6
+crw-rw-rw- 1 root root 195,   7 May  4 10:55 /dev/nvidia7
+crw-rw-rw- 1 root root 195, 255 May  4 10:55 /dev/nvidiactl
+
+/dev/nvidia-caps:
+total 0
+cr-------- 1 root root 241, 1 May  4 10:55 nvidia-cap1
+cr--r--r-- 1 root root 241, 2 May  4 10:55 nvidia-cap2
+
+[outer] Spack revision
+86305d08f1
+
+[inner] namespace/rootfs/path contract
+id: uid=0(root) gid=0(root) groups=0(root),65534(nogroup)
+kernel: Linux n116-077-207 5.15.152.bsk.9-amd64 #5.15.152.bsk.9 SMP veLinux 5.15.152.bsk.9 Mon Aug 4 12:30:49 UT x86_64 x86_64 x86_64 GNU/Linux
+os-release:
+PRETTY_NAME="Ubuntu 24.04.3 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.3 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
+DRACCUS_PREFIX=/opt/draccus
+SPACK_ROOT=/opt/draccus/spack
+CUDA_HOME=/usr/local/cuda
+
+[inner] uv path + pinned pip shim
+[PASS] draccus-probe completed successfully
+
+========================================
+           VALIDATION SUMMARY
+========================================
+Passed: 76
+Failed: 0
+========================================
+RESULT: SUCCESS (all checks passed)
