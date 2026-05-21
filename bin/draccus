@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# shellcheck source=../lib/draccus-env.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/draccus-env.sh"
+_draccus_bin="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DRACCUS_BUNDLE="$(cd "$_draccus_bin/.." && pwd)"
+unset _draccus_bin
+export DRACCUS_BUNDLE
+
 # shellcheck source=../lib/draccus-cli.sh
 source "$DRACCUS_BUNDLE/lib/draccus-cli.sh"
 

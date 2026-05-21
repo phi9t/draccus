@@ -6,8 +6,6 @@
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/draccus-env.sh"
 # shellcheck source=draccus-layout.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/draccus-layout.sh"
-# shellcheck source=draccus-runtime.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/draccus-runtime.sh"
 
 # Echo the absolute path of the nearest project root.
 # A project root is a directory that:
@@ -148,6 +146,34 @@ draccus_project_bundle_from_config() {
   bundle="$(draccus_yaml_value bundle "$config")" || return 1
   [[ -n "$bundle" ]] || return 1
   echo "$bundle"
+}
+
+draccus_project_apply_bundle_from_config() {
+  local config="${1:-}"
+  local bundle project_root selected_bundle
+  if [[ -z "$config" ]]; then
+    config="$(draccus_project_config_path)" || return 1
+  fi
+
+  bundle="$(draccus_project_bundle_from_config "$config")" || return 0
+  project_root="$(dirname "$config")"
+  case "$bundle" in
+    /*)
+      selected_bundle="$bundle"
+      ;;
+    *)
+      selected_bundle="$project_root/$bundle"
+      ;;
+  esac
+
+  if [[ ! -d "$selected_bundle" ]]; then
+    echo "draccus: error: selected project bundle does not exist: $selected_bundle" >&2
+    return 2
+  fi
+
+  DRACCUS_BUNDLE="$(cd "$selected_bundle" && pwd -P)"
+  export DRACCUS_BUNDLE
+  unset DRACCUS_ROOTFS DRACCUS_STATE DRACCUS_CACHE DRACCUS_BUILD
 }
 
 draccus_project_runs_dir_from_config() {
@@ -374,6 +400,9 @@ name: $name
 # runs_dir: /absolute/path/to/run/artifacts
 EOF
   fi
+
+  # shellcheck source=draccus-runtime.sh
+  source "$DRACCUS_BUNDLE/lib/draccus-runtime.sh"
 
   (
     DRACCUS_WORKSPACE="$root" draccus_runtime_exec_run bash -lc '

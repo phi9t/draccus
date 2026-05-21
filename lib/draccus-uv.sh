@@ -113,7 +113,7 @@ draccus_uv_audit_pip_plan() {
   shift
   local plan line installed forbidden
 
-  if ! plan="$("$DRACCUS_BUNDLE/bin/draccus-run" uv pip "$pip_cmd" --dry-run "$@" 2>&1)"; then
+  if ! plan="$(draccus_runtime_exec_run uv pip "$pip_cmd" --dry-run "$@" 2>&1)"; then
     printf '%s\n' "$plan" >&2
     return 2
   fi
@@ -133,17 +133,17 @@ draccus_uv_audit_pip_plan() {
 }
 
 draccus_uv_ensure_workspace_venv() {
-  if [[ ! -f ".venv/pyvenv.cfg" ]]; then
-    "$DRACCUS_BUNDLE/bin/draccus-run" bash -lc 'uv venv --python "$(which python)" --system-site-packages /workspace/.venv'
+  if [[ ! -f "$DRACCUS_WORKSPACE/.venv/pyvenv.cfg" ]]; then
+    (draccus_runtime_exec_run bash -lc 'uv venv --python "$(which python)" --system-site-packages /workspace/.venv')
   fi
-  draccus_project_neutralize_pip "$PWD/.venv"
+  draccus_project_neutralize_pip "$DRACCUS_WORKSPACE/.venv"
 }
 
 draccus_uv_neutralize_created_venvs() {
   local candidate last_arg
 
-  if [[ -f ".venv/pyvenv.cfg" ]]; then
-    draccus_project_neutralize_pip "$PWD/.venv"
+  if [[ -f "$DRACCUS_WORKSPACE/.venv/pyvenv.cfg" ]]; then
+    draccus_project_neutralize_pip "$DRACCUS_WORKSPACE/.venv"
   fi
 
   if (($# > 0)); then
@@ -154,7 +154,7 @@ draccus_uv_neutralize_created_venvs() {
         ;;
     esac
     candidate="$last_arg"
-    [[ "$candidate" = /* ]] || candidate="$PWD/$candidate"
+    [[ "$candidate" = /* ]] || candidate="$DRACCUS_WORKSPACE/$candidate"
     if [[ -f "$candidate/pyvenv.cfg" ]]; then
       draccus_project_neutralize_pip "$candidate"
     fi
@@ -164,6 +164,19 @@ draccus_uv_neutralize_created_venvs() {
 draccus_uv_main() {
   local cmd="${1:-}"
   local pip_cmd="${2:-}"
+  local config project_root
+
+  config="$(draccus_project_config_path)" || {
+    echo "draccus: error: no draccus.yaml found. Run: draccus project init <name>" >&2
+    return 1
+  }
+  project_root="$(draccus_project_root_from_config "$config")"
+  draccus_project_apply_bundle_from_config "$config" || return $?
+  DRACCUS_WORKSPACE="$project_root"
+  export DRACCUS_WORKSPACE
+
+  # shellcheck source=draccus-runtime.sh
+  source "$DRACCUS_BUNDLE/lib/draccus-runtime.sh"
 
   case "$cmd:$pip_cmd" in
     pip:install | pip:sync | pip:uninstall)
@@ -175,21 +188,21 @@ draccus_uv_main() {
         if [[ "$pip_cmd" != "uninstall" ]]; then
           draccus_uv_audit_pip_plan "$pip_cmd" "$@"
         fi
-        exec "$DRACCUS_BUNDLE/bin/draccus-run" uv pip "$pip_cmd" "$@"
+        draccus_runtime_exec_run uv pip "$pip_cmd" "$@"
       fi
       draccus_uv_ensure_workspace_venv
       if [[ "$pip_cmd" != "uninstall" ]]; then
         draccus_uv_audit_pip_plan "$pip_cmd" --python /workspace/.venv/bin/python "$@"
       fi
-      exec "$DRACCUS_BUNDLE/bin/draccus-run" uv pip "$pip_cmd" --python /workspace/.venv/bin/python "$@"
+      draccus_runtime_exec_run uv pip "$pip_cmd" --python /workspace/.venv/bin/python "$@"
       ;;
   esac
 
   if [[ "$cmd" == "venv" ]]; then
-    "$DRACCUS_BUNDLE/bin/draccus-run" uv "$@"
+    (draccus_runtime_exec_run uv "$@")
     draccus_uv_neutralize_created_venvs "$@"
     return 0
   fi
 
-  exec "$DRACCUS_BUNDLE/bin/draccus-run" uv "$@"
+  draccus_runtime_exec_run uv "$@"
 }

@@ -35,6 +35,45 @@ _draccus_run_binds_shims() {
   grep -qF -- '--ro-bind "$DRACCUS_BUNDLE/shims" /opt/draccus/shims' "$DRACCUS_RUNTIME_LIB"
 }
 
+_draccus_shell_rejects_piped_stdin() {
+  local output status
+  set +e
+  output="$(printf 'echo DRACCUS_PIPE_TEST\n' | "$DRACCUS_BUNDLE/bin/draccus" shell 2>&1)"
+  status=$?
+  set -e
+
+  [[ "$status" -ne 0 ]] \
+    && [[ "$output" != *DRACCUS_PIPE_TEST* ]] \
+    && [[ "$output" == *"draccus shell is interactive-only"* ]] \
+    && [[ "$output" == *"draccus run"* ]]
+}
+
+_draccus_project_command_rejects_missing_config_bundle() {
+  local command="$1"
+  shift
+  local tmpdir output status ok=1
+  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/draccus-project-bundle.XXXXXX")"
+
+  cat >"$tmpdir/draccus.yaml" <<'EOF'
+name: bundle-override-smoke
+bundle: /definitely/missing/draccus-bundle
+EOF
+
+  set +e
+  output="$(cd "$tmpdir" && "$DRACCUS_BUNDLE/bin/draccus" "$command" "$@" 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -ne 0 ]] \
+    && [[ "$output" == *"selected project bundle does not exist"* ]] \
+    && [[ "$output" == *"/definitely/missing/draccus-bundle"* ]]; then
+    ok=0
+  fi
+
+  rm -rf "$tmpdir"
+  return "$ok"
+}
+
 # Counters for pass/fail
 pass_count=0
 fail_count=0
@@ -72,9 +111,12 @@ SHELL_FILES=(
   "$DRACCUS_BUNDLE/bin/draccus-uv"
   "$DRACCUS_BUNDLE/host-bin/nvidia-smi"
   "$DRACCUS_BUNDLE/lib/draccus-cli.sh"
+  "$DRACCUS_BUNDLE/lib/draccus-doctor.sh"
   "$DRACCUS_BUNDLE/lib/draccus-layout.sh"
+  "$DRACCUS_BUNDLE/lib/draccus-notebook.sh"
   "$DRACCUS_BUNDLE/lib/draccus-project.sh"
   "$DRACCUS_BUNDLE/lib/draccus-runtime.sh"
+  "$DRACCUS_BUNDLE/lib/draccus-shell.sh"
   "$DRACCUS_BUNDLE/lib/draccus-uv.sh"
   "$DRACCUS_BUNDLE/shims/pip"
   "$DRACCUS_BUNDLE/scripts/bootstrap-rootfs.sh"
@@ -284,6 +326,9 @@ echo "=== CHECK 8B: draccus command help ==="
 
 check "draccus --help mentions draccus shell" "\"$DRACCUS_BUNDLE/bin/draccus\" --help | grep -qF 'draccus shell'"
 check "draccus --help mentions draccus run" "\"$DRACCUS_BUNDLE/bin/draccus\" --help | grep -qF 'draccus run'"
+check "draccus shell rejects piped stdin" "_draccus_shell_rejects_piped_stdin"
+check "draccus uv applies project bundle before runtime" "_draccus_project_command_rejects_missing_config_bundle uv --version"
+check "draccus notebook applies project bundle before runtime" "_draccus_project_command_rejects_missing_config_bundle notebook --port 9999"
 
 echo ""
 
@@ -322,12 +367,12 @@ check "draccus-run PATH leads with /opt/draccus/shims" "grep -qF 'draccus_path_v
 check "draccus-run PATH includes host-bin" "grep -qF '/opt/draccus/host-bin' \"$DRACCUS_RUNTIME_LIB\""
 check "draccus-run PATH includes spack bin" "grep -qF '/opt/draccus/spack/bin' \"$DRACCUS_RUNTIME_LIB\""
 check "draccus-run PATH includes starship cache bin" "grep -qF '/opt/draccus/cache/starship/bin' \"$DRACCUS_RUNTIME_LIB\""
-check "draccus-shell sources Spack setup" "grep -qF '/opt/draccus/spack/share/spack/setup-env.sh' \"$DRACCUS_BUNDLE/bin/draccus-shell\""
+check "draccus shell sources Spack setup" "grep -qF '/opt/draccus/spack/share/spack/setup-env.sh' \"$DRACCUS_BUNDLE/lib/draccus-shell.sh\""
 check "draccus-run disables Spack locks for readonly inspection" "grep -qF 'SPACK_USER_CONFIG_PATH /opt/draccus/cache/spack-readonly-config' \"$DRACCUS_RUNTIME_LIB\""
 check "draccus-run mirrors Spack env metadata for readonly activation" "grep -qF 'spack-readonly-envs' \"$DRACCUS_RUNTIME_LIB\""
-check "draccus-shell rewrites managed env activation to readonly mirror" "grep -qF '_draccus_spack_upstream' \"$DRACCUS_BUNDLE/bin/draccus-shell\""
-check "draccus-shell launches zsh" "grep -qF 'zsh \"\$@\"' \"$DRACCUS_BUNDLE/bin/draccus-shell\""
-check "draccus-shell configures starship" "grep -qF 'starship init zsh' \"$DRACCUS_BUNDLE/bin/draccus-shell\""
+check "draccus shell rewrites managed env activation to readonly mirror" "grep -qF '_draccus_spack_upstream' \"$DRACCUS_BUNDLE/lib/draccus-shell.sh\""
+check "draccus shell launches zsh" "grep -qF 'zsh' \"$DRACCUS_BUNDLE/lib/draccus-shell.sh\""
+check "draccus shell configures starship" "grep -qF 'starship init zsh' \"$DRACCUS_BUNDLE/lib/draccus-shell.sh\""
 check "starship-version.env exists" "test -f \"$DRACCUS_BUNDLE/scripts/starship-version.env\""
 check "draccus-run exports base-ml PYTHONPATH" "grep -qF '/opt/draccus/view/base-ml/lib/python3.12/site-packages' \"$DRACCUS_RUNTIME_LIB\""
 check "draccus-run has no host_uv / DRACCUS_HOST_UV_BIN" "! grep -qE 'DRACCUS_HOST_UV_BIN|host_uv_' \"$DRACCUS_RUNTIME_LIB\""

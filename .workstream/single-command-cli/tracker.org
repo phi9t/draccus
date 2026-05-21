@@ -178,55 +178,99 @@ Fill before the dependent phase starts.
     - =.workstream/single-command-cli/artifacts/p2.2-validate-static.log=
 
 * Phase 3 — Daily workflow commands :phase3:
-** TODO P3.1 Implement native interactive =draccus shell=
+** DONE P3.1 Implement native interactive =draccus shell=
    :PROPERTIES:
    :ID:       P3.1
-   :OWNER:
-   :STARTED:
-   :FINISHED:
+   :OWNER:   codex-implementer-task6
+   :STARTED: 2026-05-21T20:43:24Z
+   :FINISHED: 2026-05-21T20:50:40Z
    :DEPENDS:  P1.2
    :END:
    DoD: shell works outside projects, stays interactive-only and unrecorded, preserves zsh/base-ml/project-venv behavior, and Gate 0 passes.
 
-** TODO P3.2 Implement =draccus build=
+*** Log
+    - Added =lib/draccus-shell.sh= with the existing zsh/starship setup moved behind =draccus_shell_main=.
+    - Verified =env -u DRACCUS_BUNDLE DRACCUS_ROOTFS=/data02/home/philip.yang/draccus/rootfs ./bin/draccus help shell=.
+    - Verified =env -u DRACCUS_BUNDLE DRACCUS_ROOTFS=/data02/home/philip.yang/draccus/rootfs ./bin/draccus shell echo nope= exits 2 with the interactive-only guidance.
+    - Verified Gate 0 with =env -u DRACCUS_BUNDLE DRACCUS_ROOTFS=/data02/home/philip.yang/draccus/rootfs ./scripts/validate-static.sh=.
+    - Task 6 review follow-up 2026-05-21T21:06:21Z: fixed stale incoming =DRACCUS_BUNDLE= preempting dispatcher loading and delayed =draccus shell --bundle= runtime sourcing until after argument validation and bundle selection. Verified stale-env help and interactive-only validation paths.
+    - Task 6 review follow-up 2026-05-21T21:17:17Z: added stdin/stdout TTY guard so piped =draccus shell= exits 2 before zsh/runtime startup and directs command usage to =draccus run=.
+
+*** Artifacts
+    - =.workstream/single-command-cli/artifacts/p3.1-p3.5-validate-static.log=
+
+** DONE P3.2 Implement =draccus build=
    :PROPERTIES:
    :ID:       P3.2
-   :OWNER:
-   :STARTED:
-   :FINISHED:
+   :OWNER:   codex-implementer
+   :STARTED: 2026-05-21T19:42:50Z
+   :FINISHED: 2026-05-21T19:48:10Z
    :DEPENDS:  P1.2
    :END:
    DoD: build command uses the writable foundation path, help clearly marks it as mutating, and Gate 0 passes.
 
-** TODO P3.3 Implement project-bound =draccus uv=
+*** Log
+    - Build dispatch was implemented during the runtime extraction work recorded under P1.2: =draccus build -- <cmd>= sources =lib/draccus-runtime.sh= and calls =draccus_runtime_exec_build=.
+    - Existing P1.2 verification covered =env -u DRACCUS_BUNDLE DRACCUS_ROOTFS=/data02/home/philip.yang/draccus/rootfs ./bin/draccus build -- bash -lc 'test "$SPACK_ROOT" = /opt/draccus/spack'= and Gate 0.
+
+** DONE P3.3 Implement project-bound =draccus uv=
    :PROPERTIES:
    :ID:       P3.3
-   :OWNER:
-   :STARTED:
-   :FINISHED:
+   :OWNER:   codex-implementer-task6
+   :STARTED: 2026-05-21T20:43:24Z
+   :FINISHED: 2026-05-21T20:50:40Z
    :DEPENDS:  P2.1
    :END:
    DoD: uv requires a project, preserves foundation package protections, and Gate 0 passes.
 
-** TODO P3.4 Implement =draccus notebook=
+*** Log
+    - Updated =lib/draccus-uv.sh= to require =draccus.yaml=, set =DRACCUS_WORKSPACE= to the config root, and call =draccus_runtime_exec_run= directly.
+    - Verified outside-project failure with =env -u DRACCUS_BUNDLE DRACCUS_ROOTFS=/data02/home/philip.yang/draccus/rootfs /data02/home/philip.yang/draccus/.worktrees/single-command-cli/bin/draccus uv --version= from =/tmp=.
+    - Verified temp-project success after =draccus project init= with =draccus uv --version= using the initialized main bundle state: =uv 0.11.13=.
+    - Verified Gate 0 with =env -u DRACCUS_BUNDLE DRACCUS_ROOTFS=/data02/home/philip.yang/draccus/rootfs ./scripts/validate-static.sh=.
+    - Task 6 review follow-up 2026-05-21T21:17:17Z: =draccus uv= now applies =bundle:= from =draccus.yaml= before runtime sourcing; invalid project bundle paths fail clearly without falling back to the entrypoint bundle.
+
+*** Artifacts
+    - =.workstream/single-command-cli/artifacts/p3.1-p3.5-validate-static.log=
+
+** DONE P3.4 Implement =draccus notebook=
    :PROPERTIES:
    :ID:       P3.4
-   :OWNER:
-   :STARTED:
-   :FINISHED:
+   :OWNER:   codex-implementer-task6
+   :STARTED: 2026-05-21T20:43:24Z
+   :FINISHED: 2026-05-21T20:50:40Z
    :DEPENDS:  P2.1
    :END:
    DoD: notebook requires a project, launches Jupyter when installed, prints exact install guidance when missing, and Gate 0 passes.
 
-** TODO P3.5 Implement =draccus doctor=
+*** Log
+    - Added =lib/draccus-notebook.sh= with project config enforcement, =--host=/=--port= parsing, and JupyterLab presence check inside the project workspace.
+    - Verified missing-Jupyter guidance in a temp initialized project: =JupyterLab is not installed. Run: draccus uv pip install jupyterlab= with exit 2.
+    - Verified Gate 0 with =env -u DRACCUS_BUNDLE DRACCUS_ROOTFS=/data02/home/philip.yang/draccus/rootfs ./scripts/validate-static.sh=.
+    - Task 6 review follow-up 2026-05-21T21:17:17Z: =draccus notebook= now applies =bundle:= from =draccus.yaml= before runtime sourcing; invalid project bundle paths fail clearly without falling back to the entrypoint bundle.
+
+*** Artifacts
+    - =.workstream/single-command-cli/artifacts/p3.1-p3.5-validate-static.log=
+
+** DONE P3.5 Implement =draccus doctor=
    :PROPERTIES:
    :ID:       P3.5
-   :OWNER:
-   :STARTED:
-   :FINISHED:
+   :OWNER:   codex-implementer-task6
+   :STARTED: 2026-05-21T20:43:24Z
+   :FINISHED: 2026-05-21T20:50:40Z
    :DEPENDS:  P1.2
    :END:
    DoD: doctor checks bundle presence, bwrap, canonical paths, uv/pip shims, GPU presence, and foundation import provenance; missing GPU fails; =--json= works; Gate 0 passes.
+
+*** Log
+    - Added =lib/draccus-doctor.sh= with =--json=, bundle/rootfs checks, GPU visibility failure, runtime path checks, uv/pip path checks, and foundation import provenance checks.
+    - Verified =env -u DRACCUS_BUNDLE DRACCUS_ROOTFS=/data02/home/philip.yang/draccus/rootfs ./bin/draccus bundle show --json=.
+    - Verified =env -u DRACCUS_BUNDLE DRACCUS_ROOTFS=/data02/home/philip.yang/draccus/rootfs DRACCUS_STATE=/data02/home/philip.yang/draccus/state ./bin/draccus doctor --json= returns ={"ok":true,...}= against the initialized main bundle state. Without =DRACCUS_STATE=, the linked worktree has no populated base-ml state and doctor returns JSON =ok:false= for runtime checks.
+    - Verified Gate 0 with =env -u DRACCUS_BUNDLE DRACCUS_ROOTFS=/data02/home/philip.yang/draccus/rootfs ./scripts/validate-static.sh=.
+    - Task 6 review follow-up 2026-05-21T21:06:21Z: added shared =draccus_json_string= and used it for =bundle show --json= plus =doctor --json=. Verified quote/tab paths parse with =python -m json.tool=.
+
+*** Artifacts
+    - =.workstream/single-command-cli/artifacts/p3.1-p3.5-validate-static.log=
 
 * Phase 4 — Recorded run :phase4:
 ** TODO P4.1 Implement project-bound =draccus run=

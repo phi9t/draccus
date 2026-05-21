@@ -5,6 +5,59 @@ draccus_die() {
   exit 2
 }
 
+draccus_json_string() {
+  local value="${1:-}"
+  local byte chunk out
+
+  if command -v python3 >/dev/null 2>&1; then
+    DRACCUS_JSON_VALUE="$value" python3 -c 'import json, os; print(json.dumps(os.environ["DRACCUS_JSON_VALUE"]))'
+    return 0
+  fi
+
+  if command -v python >/dev/null 2>&1; then
+    DRACCUS_JSON_VALUE="$value" python -c 'import json, os; print(json.dumps(os.environ["DRACCUS_JSON_VALUE"]))'
+    return 0
+  fi
+
+  out='"'
+  while read -r chunk; do
+    for byte in $chunk; do
+      case "$byte" in
+        08)
+          out+="\\b"
+          ;;
+        09)
+          out+="\\t"
+          ;;
+        0a)
+          out+="\\n"
+          ;;
+        0c)
+          out+="\\f"
+          ;;
+        0d)
+          out+="\\r"
+          ;;
+        22)
+          out+="\\\""
+          ;;
+        5c)
+          out+="\\\\"
+          ;;
+        0? | 1?)
+          out+="\\u00${byte}"
+          ;;
+        *)
+          printf -v chunk '%b' "\\x$byte"
+          out+="$chunk"
+          ;;
+      esac
+    done
+  done < <(printf '%s' "$value" | od -An -tx1 -v)
+  out+='"'
+  printf '%s\n' "$out"
+}
+
 draccus_usage() {
   cat <<'EOF'
 Usage:
@@ -166,6 +219,46 @@ draccus_dispatch() {
       source "$DRACCUS_BUNDLE/lib/draccus-runtime.sh"
       draccus_runtime_exec_build "$@"
       ;;
+    shell)
+      shift
+      if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        draccus_help "$command"
+        return 0
+      fi
+      # shellcheck source=draccus-shell.sh
+      source "$DRACCUS_BUNDLE/lib/draccus-shell.sh"
+      draccus_shell_main "$@"
+      ;;
+    uv)
+      shift
+      if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        draccus_help "$command"
+        return 0
+      fi
+      # shellcheck source=draccus-uv.sh
+      source "$DRACCUS_BUNDLE/lib/draccus-uv.sh"
+      draccus_uv_main "$@"
+      ;;
+    notebook)
+      shift
+      if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        draccus_help "$command"
+        return 0
+      fi
+      # shellcheck source=draccus-notebook.sh
+      source "$DRACCUS_BUNDLE/lib/draccus-notebook.sh"
+      draccus_notebook_main "$@"
+      ;;
+    doctor)
+      shift
+      if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        draccus_help "$command"
+        return 0
+      fi
+      # shellcheck source=draccus-doctor.sh
+      source "$DRACCUS_BUNDLE/lib/draccus-doctor.sh"
+      draccus_doctor_main "$@"
+      ;;
     project)
       shift
       if [[ "${1:-}" == "--help" || "${1:-}" == "-h" || -z "${1:-}" ]]; then
@@ -179,7 +272,45 @@ draccus_dispatch() {
       source "$DRACCUS_BUNDLE/lib/draccus-project.sh"
       draccus_project_init_main "$@"
       ;;
-    shell | run | uv | doctor | notebook | bundle)
+    bundle)
+      shift
+      if [[ "${1:-}" == "--help" || "${1:-}" == "-h" || -z "${1:-}" ]]; then
+        draccus_help "$command"
+        return 0
+      fi
+      if [[ "${1:-}" != "show" ]]; then
+        draccus_die "expected: draccus bundle show [--json]"
+      fi
+      shift
+
+      local json=0
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --json)
+            json=1
+            shift
+            ;;
+          *)
+            draccus_die "expected: draccus bundle show [--json]"
+            ;;
+        esac
+      done
+
+      # shellcheck source=draccus-layout.sh
+      source "$DRACCUS_BUNDLE/lib/draccus-layout.sh"
+      local default_bundle active_bundle
+      default_bundle="$(draccus_default_bundle)"
+      active_bundle="${DRACCUS_BUNDLE:-$default_bundle}"
+      if [[ "$json" -eq 1 ]]; then
+        printf '{"bundle":%s,"default_bundle":%s}\n' \
+          "$(draccus_json_string "$active_bundle")" \
+          "$(draccus_json_string "$default_bundle")"
+      else
+        echo "Bundle: $active_bundle"
+        echo "Default bundle: $default_bundle"
+      fi
+      ;;
+    run)
       if [[ "${2:-}" == "--help" || "${2:-}" == "-h" ]]; then
         draccus_help "$command"
         return 0
