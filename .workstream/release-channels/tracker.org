@@ -1,0 +1,123 @@
+#+TITLE: Release Channels — Task Tracker
+#+STARTUP: overview logdone
+#+TODO: TODO(t) IN-PROGRESS(i!) BLOCKED(b@/!) | DONE(d!) WONTFIX(w@/!)
+#+PROPERTY: header-args :eval no
+#+FILETAGS: :workstream:release-channels:
+
+* Overview
+This tracker drives the work described in [[file:design.md][design.md]].
+
+* Decisions
+** Release manifest fields
+   :PROPERTIES:
+   :DECIDED_BY:
+   :DECIDED_ON:
+   :END:
+   - Choice:
+   - Rationale:
+
+** Required B200 validation gates
+   :PROPERTIES:
+   :DECIDED_BY:
+   :DECIDED_ON:
+   :END:
+   - Choice:
+   - Rationale:
+
+** Compatibility contract
+   :PROPERTIES:
+   :DECIDED_BY:
+   :DECIDED_ON:
+   :END:
+   - Choice:
+   - Rationale:
+
+** Reveal command shape
+   :PROPERTIES:
+   :DECIDED_BY:
+   :DECIDED_ON:
+   :END:
+   - Choice:
+   - Rationale:
+
+* Phase 0 — Preflight :phase0:
+** TODO P0.1 Confirm bundle packaging dependency
+   :PROPERTIES:
+   :ID:       P0.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:
+   :END:
+   DoD: local bundle pack/unpack/show works and a validation host is available.
+
+** TODO P0.2 Fill decisions
+   :PROPERTIES:
+   :ID:       P0.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P0.1
+   :END:
+   DoD: release manifest, validation, compatibility, and reveal decisions filled.
+
+* Phase 1 — Manifest :phase1:
+** TODO P1.1 Define foundation release manifest
+   :PROPERTIES:
+   :ID:       P1.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P0.2
+   :END:
+   DoD: manifest schema covers identity, pins, driver floor, target GPU, source refs, and caveats.
+
+* Phase 2 — Validation report :phase2:
+** TODO P2.1 Generate release validation report
+   :PROPERTIES:
+   :ID:       P2.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P1.1
+   :END:
+   DoD: report records required/skipped/unavailable gate outcomes and links raw evidence.
+
+* Phase 3 — Reveal workflow :phase3:
+** TODO P3.1 Implement reveal/check path
+   :PROPERTIES:
+   :ID:       P3.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P2.1
+   :END:
+   DoD: research engineer can inspect selected foundation identity and local validation status in one command.
+
+* Phase 4 — Docs and acceptance :phase4:
+** TODO P4.1 Document release and future channel model
+   :PROPERTIES:
+   :ID:       P4.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P3.1
+   :END:
+   DoD: docs explain B200 releases, reveal, compatibility contracts, and future named channels.
+
+** TODO P4.2 Acceptance and retrospective
+   :PROPERTIES:
+   :ID:       P4.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P4.1
+   :END:
+   DoD: sample release evidence exists, Gate 0 passes, retrospective filled.
+
+* Retrospective
+- Surprises:
+- Automate next time:
+- Doc gaps:
+
+* Notes

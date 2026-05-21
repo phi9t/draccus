@@ -1,0 +1,141 @@
+#+TITLE: Experiment Correctness — Task Tracker
+#+STARTUP: overview logdone
+#+TODO: TODO(t) IN-PROGRESS(i!) BLOCKED(b@/!) | DONE(d!) WONTFIX(w@/!)
+#+PROPERTY: header-args :eval no
+#+FILETAGS: :workstream:experiment-correctness:
+
+* Overview
+This tracker drives the work described in [[file:design.md][design.md]].
+
+* Decisions
+** Replay strictness
+   :PROPERTIES:
+   :DECIDED_BY:
+   :DECIDED_ON:
+   :END:
+   - Choice:
+   - Rationale:
+
+** Checkpoint sidecar schema
+   :PROPERTIES:
+   :DECIDED_BY:
+   :DECIDED_ON:
+   :END:
+   - Choice:
+   - Rationale:
+
+** Resume override semantics
+   :PROPERTIES:
+   :DECIDED_BY:
+   :DECIDED_ON:
+   :END:
+   - Choice:
+   - Rationale:
+
+** Data/cache locking modes
+   :PROPERTIES:
+   :DECIDED_BY:
+   :DECIDED_ON:
+   :END:
+   - Choice:
+   - Rationale:
+
+** Failure classification taxonomy
+   :PROPERTIES:
+   :DECIDED_BY:
+   :DECIDED_ON:
+   :END:
+   - Choice:
+   - Rationale:
+
+* Phase 0 — Preflight :phase0:
+** TODO P0.1 Confirm runtime provenance dependency
+   :PROPERTIES:
+   :ID:       P0.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:
+   :END:
+   DoD: provenance-rich run metadata exists and sample artifacts are available.
+
+** TODO P0.2 Fill decisions
+   :PROPERTIES:
+   :ID:       P0.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P0.1
+   :END:
+   DoD: replay, checkpoint, resume, locking, and classification decisions filled.
+
+* Phase 1 — Replay :phase1:
+** TODO P1.1 Implement replay contract reconstruction
+   :PROPERTIES:
+   :ID:       P1.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P0.2
+   :END:
+   DoD: replay reconstructs command/project/bundle/env contract or fails with actionable reason.
+
+* Phase 2 — Checkpoint and resume :phase2:
+** TODO P2.1 Define checkpoint sidecar schema
+   :PROPERTIES:
+   :ID:       P2.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P0.2
+   :END:
+   DoD: schema covers step, hashes, RNG/config identity, and framework adapter metadata.
+
+** TODO P2.2 Implement resume compatibility checks
+   :PROPERTIES:
+   :ID:       P2.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P2.1
+   :END:
+   DoD: resume validates compatibility and requires explicit override for declared drift.
+
+* Phase 3 — Data and artifacts :phase3:
+** TODO P3.1 Implement data/artifact locking policy
+   :PROPERTIES:
+   :ID:       P3.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P0.2
+   :END:
+   DoD: documented locking modes cover read-only datasets, floating caches, and snapshot claims.
+
+* Phase 4 — Failure classification and acceptance :phase4:
+** TODO P4.1 Add coarse failure classification
+   :PROPERTIES:
+   :ID:       P4.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P1.1 P2.2 P3.1
+   :END:
+   DoD: run metadata can classify environment/code/data/hardware/user-cancel at coarse level.
+
+** TODO P4.2 Docs, acceptance, and retrospective
+   :PROPERTIES:
+   :ID:       P4.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P4.1
+   :END:
+   DoD: docs updated, representative samples validated, Gate 0 passes, retrospective filled.
+
+* Retrospective
+- Surprises:
+- Automate next time:
+- Doc gaps:
+
+* Notes

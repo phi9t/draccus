@@ -1,109 +1,131 @@
 # Draccus workstreams — index
 
-This directory holds the per-feature planning and execution state for any non-trivial work in Draccus. The protocol — when to create a workstream, how to claim a task, what counts as `DONE` — is defined in **[AGENTS.md → Workstream protocol](../AGENTS.md)**; the full templates and rules live in **[`.agents/skills/workstream/SKILL.md`](../.agents/skills/workstream/SKILL.md)**. This file is the discovery layer: it tells you which workstreams are active right now, what to read first, and what the one outstanding code action is across the whole set.
+This directory holds per-feature planning and execution state for non-trivial Draccus work. The protocol is defined in [AGENTS.md](../AGENTS.md); the full templates live in [`.agents/skills/workstream/SKILL.md`](../.agents/skills/workstream/SKILL.md).
 
-Each workstream is a directory with a fixed shape:
+Each workstream has:
 
-```
+```text
 .workstream/<slug>/
-├── design.md       goal, scope, invariants honored, risks, definition of done
-├── tracker.org     org-mode TODO / IN-PROGRESS / BLOCKED / DONE
-└── artifacts/      logs, lockfiles, command output produced during execution
+├── design.md
+├── tracker.org
+└── artifacts/
 ```
 
-The `**Status:**` line at the top of each `design.md` is the canonical state surface. Three normalized forms are in use:
-
-- `Closed (<date>) — <one-line outcome>`
-- `Active — <one-line next action>`
-- `Blocked on: <decision or external event>`
+The `**Status:**` line at the top of each `design.md` is the canonical status. Update this index whenever a workstream lands or that status changes.
 
 ---
 
 ## Active
 
-Workstreams where the next move is engineering or user action.
+### `single-command-cli` — one public `draccus` command
+
+- **Status:** Active — next implementation action is Phase 0 preflight and decision recording.
+- **Owner:** unassigned.
+- **What it covers:** breaking CLI consolidation around `bin/draccus`; recorded `run`; native `shell`; project-bound `uv` and `notebook`; `doctor`; `build`; `project init`; initial `bundle show`; removal of legacy public entrypoints; Gate 0 and docs updates.
+- **Read first:** [`single-command-cli/design.md`](single-command-cli/design.md), then [`single-command-cli/tracker.org`](single-command-cli/tracker.org) `* Decisions` and P0.
+- **Depends on:** current runtime foundation and project overlay work.
+- **Blocks:** `bundle-packaging`, `runtime-provenance`.
+
+### `bundle-packaging` — local foundation bundle distribution
+
+- **Status:** Active — blocked on `single-command-cli` landing the `draccus bundle` namespace.
+- **Owner:** unassigned.
+- **What it covers:** `draccus bundle pack/unpack/show`, default install under `~/.automata/draccus/bundles/default`, local archive manifest, include/exclude policy, unpack overwrite safety.
+- **Read first:** [`bundle-packaging/design.md`](bundle-packaging/design.md), then [`bundle-packaging/tracker.org`](bundle-packaging/tracker.org).
+- **Depends on:** `single-command-cli`.
+- **Blocks:** `release-channels`.
+
+### `runtime-provenance` — richer recorded run metadata
+
+- **Status:** Active — blocked on `single-command-cli` recorded run directories.
+- **Owner:** unassigned.
+- **What it covers:** schema-versioned run metadata, git/project snapshot, selected env vars with redaction, foundation import provenance, bundle identity.
+- **Read first:** [`runtime-provenance/design.md`](runtime-provenance/design.md), then [`runtime-provenance/tracker.org`](runtime-provenance/tracker.org).
+- **Depends on:** `single-command-cli`.
+- **Blocks:** `experiment-correctness`.
+
+### `release-channels` — B200 foundation release evidence
+
+- **Status:** Active — blocked on `bundle-packaging`.
+- **Owner:** unassigned.
+- **What it covers:** foundation release manifests, validation reports, compatibility contracts, reveal/check workflow, future named channel notes.
+- **Read first:** [`release-channels/design.md`](release-channels/design.md), then [`release-channels/tracker.org`](release-channels/tracker.org).
+- **Depends on:** `bundle-packaging`.
+
+### `experiment-correctness` — replay, resume, locking, classification
+
+- **Status:** Active — blocked on `runtime-provenance`.
+- **Owner:** unassigned.
+- **What it covers:** replay contract reconstruction, checkpoint sidecars, resume compatibility checks, data/artifact locking, coarse failure classification.
+- **Read first:** [`experiment-correctness/design.md`](experiment-correctness/design.md), then [`experiment-correctness/tracker.org`](experiment-correctness/tracker.org).
+- **Depends on:** `runtime-provenance`.
 
 ### `uv-overlay` — per-project uv venvs on top of `base-ml`
 
-- **Status:** Active — empirical `uv sync --frozen` check (P3.1) + the only outstanding code gap across all workstreams (P4.3, see below).
+- **Status:** Active — empirical `uv sync --frozen` check (P3.1) + Gate 10c implementation gap (P4.3).
 - **Owner:** unassigned.
-- **What it covers:** `projects/<name>/` shape, `bin/draccus-project-init`, `lib/draccus-project.sh`, `scripts/validate-project-overlay.sh` (Gate 10), `scripts/validate_uv_layering.sh` (Gate 10b), and a still-missing `scripts/validate-projects-all.sh` (Gate 10c).
-- **Already shipped (Phases 0–3 partial):** project template (`projects/_template/`), `bin/draccus-project-init`, `lib/draccus-project.sh`, Gate 10, Gate 10b. `bin/draccus-uv` now sources `lib/draccus-uv.sh` (auto-venv on first `pip install` + foundation-package guards) — landed in commit [`96c7ce8`](../../../commits/96c7ce8).
-- **Outstanding:** P3.1 (empirical `uv sync --frozen` smoke test), P4.1 (cache stress test), P4.2 (DESIGN.md §8 Mermaid), **P4.3 (Gate 10c — the one outstanding code action; see "Outstanding code actions" below)**, P5.* (DESIGN.md §8 decomposition + AGENTS.md pointer).
-- **Read first:** [`uv-overlay/design.md`](uv-overlay/design.md) §1 (Goal), §4 (Phases), §7 (Necessary complexity); then [`uv-overlay/tracker.org`](uv-overlay/tracker.org) `* Status snapshot` + the P4.3 task.
-- **Depends on:** `spack-envs-bootstrap/` (foundation), `uv-in-rootfs/` (resolver constraints + pip shim).
+- **What it covers:** project template, project init behavior, project overlay validation, uv layering validation, and the missing all-project validation gate.
+- **Outstanding:** P3.1, P4.1, P4.2, P4.3, P5.*. `single-command-cli` will supersede the public command surface, so this workstream must be rechecked before continuing implementation.
+- **Read first:** [`uv-overlay/design.md`](uv-overlay/design.md), then [`uv-overlay/tracker.org`](uv-overlay/tracker.org).
+- **Depends on:** `spack-envs-bootstrap`, `uv-in-rootfs`.
 
-### `thesis-testable` — host contract + base-image matrix (Gate 14)
+### `thesis-testable` — host contract + base-image matrix
 
-- **Status:** Blocked on: user sign-off on six P0 Decisions (host-contract floor, matrix members, runner shape, state distribution, smoke test scope, rootfs isolation contract).
+- **Status:** Blocked on: user sign-off on six P0 Decisions.
 - **Owner:** unassigned.
-- **What it covers:** `scripts/validate-host-contract.sh`, `scripts/thesis-smoke-test.py`, a base-image matrix harness, Gate 14 (`DRACCUS_RUN_THESIS_MATRIX=1`), and a sentinel registry to keep negative tests stable across `uv`/`pip` upgrades.
-- **Already shipped:** none — Phase 0 not yet entered; all 14 tasks `TODO`.
-- **Outstanding:** all of it. P0.1 is the entry point — pick concrete values for the six decisions, then user sign-off on the four that require it (host-contract floor, runner shape, state distribution, rootfs isolation contract).
-- **Read first:** [`thesis-testable/design.md`](thesis-testable/design.md) §1 (Goal), §5 (Decisions), §7.3 (the three matrix outcomes — `pass` / `contract-rejected` / `fail`); then [`thesis-testable/tracker.org`](thesis-testable/tracker.org) `* Decisions`.
-- **Depends on:** `spack-envs-bootstrap/` (foundation must exist to validate), `uv-overlay/` (pip-block + Gate 10b exercised by negative tests), `uv-in-rootfs/` (rootfs `uv` + `shims/pip` are part of the contract being tested).
+- **What it covers:** host-contract validation, base-image matrix, Gate 14, and sentinel registry.
+- **Read first:** [`thesis-testable/design.md`](thesis-testable/design.md), then [`thesis-testable/tracker.org`](thesis-testable/tracker.org) `* Decisions`.
+- **Depends on:** `spack-envs-bootstrap`, `uv-overlay`, `uv-in-rootfs`.
+
+---
+
+## Program Dependency Graph
+
+```text
+single-command-cli
+  |-- bundle-packaging
+  |     `-- release-channels
+  `-- runtime-provenance
+        `-- experiment-correctness
+
+spack-envs-bootstrap
+  |-- uv-in-rootfs
+  |     `-- uv-overlay
+  `-- thesis-testable
+```
+
+`single-command-cli` is the next broad product action. Existing `uv-overlay` and `thesis-testable` work remains tracked, but any future task there must account for the new single-command public surface.
+
+---
+
+## Outstanding Code Actions
+
+- **Next product action:** `single-command-cli` P0, then implementation phases P1-P6.
+- **Existing validation gap:** `uv-overlay` P4.3, the missing all-project validation gate. Revisit after CLI consolidation starts, because public command names and validation expectations will change.
 
 ---
 
 ## Closed
 
-Workstreams retained as audit trail. Each one shipped a concrete deliverable; the closure is recorded in the `**Status:**` line of the workstream's `design.md`.
+### `spack-envs-bootstrap` — foundation install
 
-### `spack-envs-bootstrap` — foundation install (Gates 0–9, 13)
-
-- **Status:** Closed (2026-05-11) — Phases 0–5 DONE; `./scripts/validate-all.sh` exit 0 on B200 in ~137 s wall (warm cache).
-- **Left behind:** pinned Spack at `86305d08…`; `envs/base-{sys,ml}/spack.yaml`; `envs/common/rootfs-externals.yaml`; lockfile snapshots at [`spack-envs-bootstrap/artifacts/{base-sys,base-ml}.spack.lock`](spack-envs-bootstrap/artifacts/). Hard-won workarounds (llvm@18 pin for jaxlib XLA, `~magma` on py-torch, `systemd-run --user` long-install harness, `finalize_rootfs_overlay` SONAME stubs, CUDA-installer SEGV → external from rootfs) documented in [`spack-envs-bootstrap/design.md §7`](spack-envs-bootstrap/design.md).
-- **One residual:** P5.3 (buildcache push to a writable mirror) intentionally skipped — the configured mirror is public read-only. Reopen if/when a team-internal mirror lands.
+- **Status:** Closed (2026-05-11) — Phases 0-5 DONE; full validation passed on B200 warm cache.
+- **Left behind:** pinned Spack, base-sys/base-ml manifests, lock snapshots, validation artifacts, and workaround documentation.
 
 ### `uv-in-rootfs` — pinned `uv` + pip shimmed
 
-- **Status:** Closed (2026-05-11) — Phases 0–5 DONE; `uv` pinned at `rootfs/usr/local/bin/uv` (version + sha256 in [`scripts/uv-version.env`](../scripts/uv-version.env)); `shims/{pip,pip3}` shadow Spack's `py-pip` via PATH order; `bin/draccus-uv` delegates to `lib/draccus-uv.sh` (auto-venv + foundation-package guards).
-- **Left behind:** `scripts/uv-version.env`, `shims/`, `bin/draccus-uv` + `lib/draccus-uv.sh`, the `host-bin/` shim directory and host-overlay logic in `lib/draccus-nvidia-mounts.sh` (added in commit [`96c7ce8`](../../../commits/96c7ce8)). Enforcement chain (resolver constraint → command shim → static scanner → runtime probe) documented in [`uv-in-rootfs/design.md §7.1`](uv-in-rootfs/design.md).
+- **Status:** Closed (2026-05-11) — Phases 0-5 DONE; rootfs uv pin, pip shims, and uv wrapper behavior landed.
 
 ### `repo-hygiene` — generated-state relocation
 
-- **Status:** Closed (2026-05-14) — Phases 0–4 DONE; 182 GB of generated state moved out of the repo.
-- **Left behind:** `rootfs/`, `state/`, `cache/`, `build/` are symlinks back to `~/.automata/draccus/repo-hygiene-20260514T062236Z/`. `.gitignore` rules tightened so source remains visible while generated paths stay out. Bundle is now usable for source review.
-- **Meta workstream** — not part of the dependency graph above; sits alongside.
+- **Status:** Closed (2026-05-14) — generated rootfs/state/cache/build moved out of source tree.
 
 ### `repo-commit-cleanup` — turn dirty tree into reviewable commits
 
-- **Status:** Closed (2026-05-19) — Phases 0–4 DONE; 5 grouped commits ([`2c55835`](../../../commits/2c55835), [`6436277`](../../../commits/6436277), [`79d3eb7`](../../../commits/79d3eb7), [`ced9b92`](../../../commits/ced9b92), [`298bb59`](../../../commits/298bb59)) replaced the broad dirty tree.
-- **Left behind:** `git status --short` clean; per-commit messages link back to the workstream artifacts they cleaned up. The NVIDIA-driver-bind-shadowing-rootfs-glibc fix landed during this workstream (commit [`2c55835`](../../../commits/2c55835)) — see [`repo-commit-cleanup/tracker.org`](repo-commit-cleanup/tracker.org) `* Decisions` for the diagnosis.
-- **Meta workstream** — not part of the dependency graph above; sits alongside.
+- **Status:** Closed (2026-05-19) — dirty tree replaced with grouped commits; status clean at close.
 
 ---
 
-## Dependency graph
+## Starting Or Continuing Work
 
-The four feature workstreams form a small DAG. The two meta workstreams (`repo-hygiene`, `repo-commit-cleanup`) sit alongside and are not part of it.
-
-```
-spack-envs-bootstrap   ── foundation install
-        │
-        ├──> uv-in-rootfs   ── pinned uv + pip shimmed
-        │         │
-        │         └──> uv-overlay   ── per-project uv venvs
-        │                    │
-        └─── ── ── ── ── ── ─┴──> thesis-testable   ── host contract + matrix
-```
-
-`thesis-testable` depends on all three predecessors because its smoke test exercises the foundation (base-ml), the pip-block (uv-in-rootfs), and the project overlay invariants (uv-overlay).
-
----
-
-## Outstanding code actions
-
-Across all six workstreams, **one** real implementation gap remains:
-
-- **`scripts/validate-projects-all.sh` (Gate 10c)** — referenced from [`uv-overlay/design.md`](uv-overlay/design.md) §1 and from [`DESIGN.md §10`](../DESIGN.md), but the file does not exist; `scripts/validate-all.sh` does not call it. Owned by `uv-overlay/tracker.org` P4.3. Deliverables: (1) author the script (iterate every `projects/*/` excluding `_template/`, run `scripts/validate-project-overlay.sh` and `scripts/validate_uv_layering.sh` per project, exit non-zero on first failure); (2) wire into `scripts/validate-all.sh` as Gate 10c after Gate 10b; (3) Gate 0 picks up the new script via the existing shellcheck/shfmt list.
-
-Everything else open in the active workstreams is documentation, validation runs, or user-decision sign-off — not new code.
-
----
-
-## Starting a new workstream
-
-Use the protocol in [`AGENTS.md`](../AGENTS.md) ("Workstream protocol — design, execute, track") and the templates in [`.agents/skills/workstream/SKILL.md`](../.agents/skills/workstream/SKILL.md). The canonical reference shape is [`spack-envs-bootstrap/`](spack-envs-bootstrap/) — design.md sections covering Goal / Out of scope / Prerequisites / Phase decomposition / Decisions / Invariants honored / Necessary complexity / Risk register / Definition of Done / Handoff / File map; tracker.org with `* Decisions` and one section per phase, tasks carrying `:OWNER:`, `:STARTED:`, `:FINISHED:`, `:DEPENDS:` (and `:SIGN_OFF:` on Decisions).
-
-Update this file whenever a workstream lands or its status changes. The Status line in the workstream's `design.md` is the source of truth; this file mirrors it.
+Use [AGENTS.md](../AGENTS.md) and [`.agents/skills/workstream/SKILL.md`](../.agents/skills/workstream/SKILL.md). Before continuing an existing workstream, read its `design.md` and `tracker.org` top to bottom, then claim the lowest-numbered unblocked task.

@@ -1,0 +1,242 @@
+#+TITLE: Single Command CLI — Task Tracker
+#+STARTUP: overview logdone
+#+TODO: TODO(t) IN-PROGRESS(i!) BLOCKED(b@/!) | DONE(d!) WONTFIX(w@/!)
+#+PROPERTY: header-args :eval no
+#+FILETAGS: :workstream:single-command-cli:
+
+* Overview
+This tracker drives the work described in [[file:design.md][design.md]].
+Read design.md §6 and AGENTS.md before claiming a task.
+
+Conventions:
+- Each task has :OWNER:, :STARTED:, :FINISHED:, and :DEPENDS: properties.
+- Large command output goes under =artifacts/=.
+- Any task touching =bin/=, =lib/=, =scripts/=, =envs/=, or =mise.toml= must run =./scripts/validate-static.sh= before DONE.
+
+* Decisions
+Fill before the dependent phase starts.
+
+** Command grammar and help scope
+   :PROPERTIES:
+   :DECIDED_BY:
+   :DECIDED_ON:
+   :END:
+   - Choice: First surface is =shell=, =run=, =uv=, =doctor=, =notebook=, =build=, =project init=, =bundle show=, and =help=.
+   - Rationale: Daily workflow first; local bundle packaging reserves =bundle= namespace.
+
+** draccus.yaml schema v1
+   :PROPERTIES:
+   :DECIDED_BY:
+   :DECIDED_ON:
+   :END:
+   - Choice: Minimal schema: project name, optional bundle path, optional runs directory.
+   - Rationale: Keep project contract explicit without pulling experiment policy into the first milestone.
+
+** Project id and run id format
+   :PROPERTIES:
+   :DECIDED_BY:
+   :DECIDED_ON:
+   :END:
+   - Choice: Project id is project name from =draccus.yaml= plus path hash. Run id is timestamp plus optional sanitized name.
+   - Rationale: Human-readable while avoiding collisions between workspaces with the same name.
+
+** Default shared root
+   :PROPERTIES:
+   :DECIDED_BY:
+   :DECIDED_ON:
+   :END:
+   - Choice: =~/.automata/draccus= with =bundles/default=, =runs=, and =projects=.
+   - Rationale: Keep generated state outside repositories and leave room for multiple bundles.
+
+** Legacy entrypoint removal
+   :PROPERTIES:
+   :DECIDED_BY:
+   :DECIDED_ON:
+   :END:
+   - Choice: Remove legacy per-command entrypoints rather than shimming them.
+   - Rationale: Make =draccus= the single source of truth.
+
+* Phase 0 — Preflight and decisions :phase0:
+** TODO P0.1 Capture current CLI and validation baseline
+   :PROPERTIES:
+   :ID:       P0.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:
+   :END:
+   DoD: current =bin/= surface, docs references, and Gate 0 baseline captured under artifacts.
+
+** TODO P0.2 Fill decisions
+   :PROPERTIES:
+   :ID:       P0.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P0.1
+   :END:
+   DoD: all subsections under =* Decisions= have =DECIDED_BY= and =DECIDED_ON=.
+
+* Phase 1 — CLI router and libraries :phase1:
+** TODO P1.1 Add thin =bin/draccus= dispatcher
+   :PROPERTIES:
+   :ID:       P1.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P0.2
+   :END:
+   DoD: =bin/draccus --help= and subcommand help render polished usage text; Gate 0 passes.
+
+** TODO P1.2 Move reusable runtime selection and CLI helpers into =lib/=
+   :PROPERTIES:
+   :ID:       P1.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P1.1
+   :END:
+   DoD: dispatcher remains thin; bundle resolution and help/error helpers live in =lib/=; Gate 0 passes.
+
+* Phase 2 — Project config and init :phase2:
+** TODO P2.1 Implement =draccus.yaml= discovery and validation
+   :PROPERTIES:
+   :ID:       P2.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P1.2
+   :END:
+   DoD: project-required commands fail clearly without =draccus.yaml=; optional bundle override resolves; Gate 0 passes.
+
+** TODO P2.2 Implement =draccus project init=
+   :PROPERTIES:
+   :ID:       P2.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P2.1
+   :END:
+   DoD: command initializes git root or managed project, writes =draccus.yaml=, creates/updates =pyproject.toml=, creates =.venv= and =uv.lock=, neutralizes pip, and Gate 0 passes.
+
+* Phase 3 — Daily workflow commands :phase3:
+** TODO P3.1 Implement native interactive =draccus shell=
+   :PROPERTIES:
+   :ID:       P3.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P1.2
+   :END:
+   DoD: shell works outside projects, stays interactive-only and unrecorded, preserves zsh/base-ml/project-venv behavior, and Gate 0 passes.
+
+** TODO P3.2 Implement =draccus build=
+   :PROPERTIES:
+   :ID:       P3.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P1.2
+   :END:
+   DoD: build command uses the writable foundation path, help clearly marks it as mutating, and Gate 0 passes.
+
+** TODO P3.3 Implement project-bound =draccus uv=
+   :PROPERTIES:
+   :ID:       P3.3
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P2.1
+   :END:
+   DoD: uv requires a project, preserves foundation package protections, and Gate 0 passes.
+
+** TODO P3.4 Implement =draccus notebook=
+   :PROPERTIES:
+   :ID:       P3.4
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P2.1
+   :END:
+   DoD: notebook requires a project, launches Jupyter when installed, prints exact install guidance when missing, and Gate 0 passes.
+
+** TODO P3.5 Implement =draccus doctor=
+   :PROPERTIES:
+   :ID:       P3.5
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P1.2
+   :END:
+   DoD: doctor checks bundle presence, bwrap, canonical paths, uv/pip shims, GPU presence, and foundation import provenance; missing GPU fails; =--json= works; Gate 0 passes.
+
+* Phase 4 — Recorded run :phase4:
+** TODO P4.1 Implement project-bound =draccus run=
+   :PROPERTIES:
+   :ID:       P4.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P2.1
+   :END:
+   DoD: run requires =draccus.yaml=, supports =--name=, =--no-record=, and =--runs-dir=, and Gate 0 passes.
+
+** TODO P4.2 Emit operational run records by default
+   :PROPERTIES:
+   :ID:       P4.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P4.1
+   :END:
+   DoD: successful and failed commands create run dirs with command, cwd, project id, bundle path, timestamps, exit code, and stdout/stderr logs; output streams live; child exit code is preserved.
+
+* Phase 5 — Remove legacy surface and enforce validation :phase5:
+** TODO P5.1 Remove legacy per-command entrypoints
+   :PROPERTIES:
+   :ID:       P5.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P3.1 P3.2 P3.3 P3.5 P4.2
+   :END:
+   DoD: =bin/= contains only the approved public command plus non-public files explicitly justified; docs and scripts no longer use legacy public command names; Gate 0 passes.
+
+** TODO P5.2 Update Gate 0 and pre-commit expectations
+   :PROPERTIES:
+   :ID:       P5.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P5.1
+   :END:
+   DoD: =./scripts/validate-static.sh= enforces the single-command surface and passes.
+
+* Phase 6 — Docs and acceptance :phase6:
+** TODO P6.1 Rewrite README and DESIGN around =draccus=
+   :PROPERTIES:
+   :ID:       P6.1
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P5.2
+   :END:
+   DoD: user-facing docs describe only the new command surface and explain shell/run/uv/project/notebook/build/doctor.
+
+** TODO P6.2 Acceptance run and retrospective
+   :PROPERTIES:
+   :ID:       P6.2
+   :OWNER:
+   :STARTED:
+   :FINISHED:
+   :DEPENDS:  P6.1
+   :END:
+   DoD: representative commands exercised, Gate 0 passes, tracker complete, retrospective filled.
+
+* Retrospective
+(fill at end)
+- Surprises:
+- Automate next time:
+- Doc gaps:
+
+* Notes
