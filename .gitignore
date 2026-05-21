@@ -58,6 +58,9 @@ venv/
 !.workstream/*/artifacts/.gitkeep
 !.workstream/*/artifacts/README.md
 
+# Isolated implementation worktrees created by agent workflows.
+.worktrees/
+
 # Local agent runtime artifacts; keep source/config files under .trae tracked separately if added.
 .trae/artifacts/
 .trae/worktrees/
