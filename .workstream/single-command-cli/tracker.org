@@ -105,15 +105,29 @@ Fill before the dependent phase starts.
     - =.workstream/single-command-cli/artifacts/p1.1-green-validate-static.log=
     - =.workstream/single-command-cli/artifacts/p1.1-final-validate-static.log=
 
-** TODO P1.2 Move reusable runtime selection and CLI helpers into =lib/=
+** DONE P1.2 Move reusable runtime selection and CLI helpers into =lib/=
    :PROPERTIES:
    :ID:       P1.2
-   :OWNER:
-   :STARTED:
-   :FINISHED:
+   :OWNER:   codex-implementer
+   :STARTED: 2026-05-21T19:42:50Z
+   :FINISHED: 2026-05-21T19:48:10Z
    :DEPENDS:  P1.1
    :END:
    DoD: dispatcher remains thin; bundle resolution and help/error helpers live in =lib/=; Gate 0 passes.
+
+*** Log
+    - Red check: added runtime extraction assertions to =scripts/validate-static.sh=; =DRACCUS_ROOTFS=/data02/home/philip.yang/draccus/rootfs ./scripts/validate-static.sh= failed as expected because =lib/draccus-runtime.sh= and the runtime delegations were absent. The inherited shell had =DRACCUS_BUNDLE= pointing at the main checkout, so subsequent worktree checks used an explicit or unset bundle.
+    - Implemented =lib/draccus-runtime.sh= with shared run/build bwrap setup and mode branches limited to bind mode plus env/PATH differences.
+    - Converted =bin/draccus-run= and =bin/draccus-build= into temporary wrappers that source the runtime library.
+    - Implemented =draccus build [--] <cmd...>= dispatch through =lib/draccus-cli.sh=.
+    - Verified =env -u DRACCUS_BUNDLE DRACCUS_ROOTFS=/data02/home/philip.yang/draccus/rootfs ./bin/draccus-run bash -lc 'test "$DRACCUS_PREFIX" = /opt/draccus'=.
+    - Verified =env -u DRACCUS_BUNDLE DRACCUS_ROOTFS=/data02/home/philip.yang/draccus/rootfs ./bin/draccus-build bash -lc 'test "$DRACCUS_PREFIX" = /opt/draccus'=.
+    - Verified =env -u DRACCUS_BUNDLE DRACCUS_ROOTFS=/data02/home/philip.yang/draccus/rootfs ./bin/draccus build -- bash -lc 'test "$SPACK_ROOT" = /opt/draccus/spack'=.
+    - Verified =env -u DRACCUS_BUNDLE DRACCUS_ROOTFS=/data02/home/philip.yang/draccus/rootfs ./scripts/validate-static.sh=.
+
+*** Artifacts
+    - =.workstream/single-command-cli/artifacts/p1.2-red-validate-static.log=
+    - =.workstream/single-command-cli/artifacts/p1.2-green-validate-static.log=
 
 * Phase 2 — Project config and init :phase2:
 ** TODO P2.1 Implement =draccus.yaml= discovery and validation

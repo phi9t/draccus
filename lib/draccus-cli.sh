@@ -150,7 +150,23 @@ draccus_dispatch() {
           ;;
       esac
       ;;
-    shell | run | uv | doctor | notebook | build | project | bundle)
+    build)
+      shift
+      if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        draccus_help "$command"
+        return 0
+      fi
+      if [[ "${1:-}" == "--" ]]; then
+        shift
+      fi
+      if [[ $# -eq 0 ]]; then
+        draccus_die "build requires a command; usage: draccus build -- <cmd> [args...]"
+      fi
+      # shellcheck source=draccus-runtime.sh
+      source "$DRACCUS_BUNDLE/lib/draccus-runtime.sh"
+      draccus_runtime_exec_build "$@"
+      ;;
+    shell | run | uv | doctor | notebook | project | bundle)
       if [[ "${2:-}" == "--help" || "${2:-}" == "-h" ]]; then
         draccus_help "$command"
         return 0
