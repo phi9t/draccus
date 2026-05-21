@@ -74,6 +74,217 @@ EOF
   return "$ok"
 }
 
+_draccus_run_rejects_missing_config() {
+  local tmpdir output status ok=1
+  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/draccus-run-missing-config.XXXXXX")"
+
+  set +e
+  output="$(cd "$tmpdir" && "$DRACCUS_BUNDLE/bin/draccus" run --no-record -- true 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -ne 0 ]] && [[ "$output" == *"no draccus.yaml found"* ]]; then
+    ok=0
+  fi
+
+  rm -rf "$tmpdir"
+  return "$ok"
+}
+
+_draccus_run_no_record_ok() {
+  local tmpdir project output status ok=1
+  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/draccus-run-no-record.XXXXXX")"
+  project="$tmpdir/project"
+  mkdir -p "$project"
+  cat >"$project/draccus.yaml" <<EOF
+name: run-no-record
+runs_dir: records
+EOF
+
+  set +e
+  output="$(cd "$project" && "$DRACCUS_BUNDLE/bin/draccus" run --no-record -- bash -lc 'echo no-record' 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]] \
+    && [[ "$output" == *"no-record"* ]] \
+    && [[ ! -e "$project/records" ]]; then
+    ok=0
+  fi
+
+  rm -rf "$tmpdir"
+  return "$ok"
+}
+
+_draccus_run_success_record_ok() {
+  local tmpdir project output status run_json result_json ok=1
+  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/draccus-run-success.XXXXXX")"
+  project="$tmpdir/project"
+  mkdir -p "$project"
+  cat >"$project/draccus.yaml" <<EOF
+name: run-success
+runs_dir: records
+EOF
+
+  set +e
+  output="$(cd "$project" && "$DRACCUS_BUNDLE/bin/draccus" run --name ok -- bash -lc 'echo out; echo err >&2' 2>&1)"
+  status=$?
+  set -e
+
+  run_json="$(find "$project/records" -name run.json -print -quit 2>/dev/null || true)"
+  result_json="$(find "$project/records" -name result.json -print -quit 2>/dev/null || true)"
+  if [[ "$status" -eq 0 ]] \
+    && [[ "$output" == *"out"* ]] \
+    && [[ "$output" == *"err"* ]] \
+    && [[ -n "$run_json" ]] \
+    && [[ -n "$result_json" ]] \
+    && python3 -m json.tool "$run_json" >/dev/null \
+    && python3 -m json.tool "$result_json" >/dev/null \
+    && grep -qF '"exit_code": 0' "$result_json" \
+    && grep -qF 'out' "$(dirname "$run_json")/logs/stdout.log" \
+    && grep -qF 'err' "$(dirname "$run_json")/logs/stderr.log"; then
+    ok=0
+  fi
+
+  rm -rf "$tmpdir"
+  return "$ok"
+}
+
+_draccus_run_failure_record_ok() {
+  local tmpdir project output status run_json result_json ok=1
+  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/draccus-run-failure.XXXXXX")"
+  project="$tmpdir/project"
+  mkdir -p "$project"
+  cat >"$project/draccus.yaml" <<EOF
+name: run-failure
+EOF
+
+  set +e
+  output="$(cd "$project" && "$DRACCUS_BUNDLE/bin/draccus" run --name fail --runs-dir custom-runs -- bash -lc 'echo before-fail; exit 7' 2>&1)"
+  status=$?
+  set -e
+
+  run_json="$(find "$project/custom-runs" -name run.json -print -quit 2>/dev/null || true)"
+  result_json="$(find "$project/custom-runs" -name result.json -print -quit 2>/dev/null || true)"
+  if [[ "$status" -eq 7 ]] \
+    && [[ "$output" == *"before-fail"* ]] \
+    && [[ -n "$run_json" ]] \
+    && [[ -n "$result_json" ]] \
+    && python3 -m json.tool "$run_json" >/dev/null \
+    && python3 -m json.tool "$result_json" >/dev/null \
+    && grep -qF '"exit_code": 7' "$result_json"; then
+    ok=0
+  fi
+
+  rm -rf "$tmpdir"
+  return "$ok"
+}
+
+_draccus_run_parallel_same_name_records_ok() {
+  local tmpdir project expected=8 i status=0 run_json result_json ok=1
+  local -a pids=() run_jsons=() result_jsons=()
+  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/draccus-run-parallel.XXXXXX")"
+  project="$tmpdir/project"
+  mkdir -p "$project" "$tmpdir/bin" "$tmpdir/rootfs/bin"
+  touch "$tmpdir/rootfs/bin/sh"
+  cat >"$project/draccus.yaml" <<EOF
+name: run-parallel
+runs_dir: records
+EOF
+
+  cat >"$tmpdir/bin/fake-bwrap" <<'EOF'
+#!/usr/bin/env bash
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--chdir" ]]; then
+    shift 2
+    exec "$@"
+  fi
+  shift
+done
+echo "fake-bwrap: missing --chdir" >&2
+exit 2
+EOF
+  chmod +x "$tmpdir/bin/fake-bwrap"
+
+  cat >"$tmpdir/bin/date" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  "-u +%Y%m%dT%H%M%SZ")
+    echo "20300101T000000Z"
+    ;;
+  "-u +%Y-%m-%dT%H:%M:%SZ")
+    echo "2030-01-01T00:00:00Z"
+    ;;
+  *)
+    /usr/bin/date "$@"
+    ;;
+esac
+EOF
+  chmod +x "$tmpdir/bin/date"
+
+  cat >"$tmpdir/bin/mkdir" <<'EOF'
+#!/usr/bin/env bash
+for arg in "$@"; do
+  case "$arg" in
+    */records/*/logs)
+      sleep 0.2
+      break
+      ;;
+  esac
+done
+exec /usr/bin/mkdir "$@"
+EOF
+  chmod +x "$tmpdir/bin/mkdir"
+
+  for i in $(seq 1 "$expected"); do
+    (
+      cd "$project"
+      PATH="$tmpdir/bin:$PATH" \
+        BWRAP="$tmpdir/bin/fake-bwrap" \
+        DRACCUS_ROOTFS="$tmpdir/rootfs" \
+        DRACCUS_STATE="$tmpdir/state" \
+        DRACCUS_CACHE="$tmpdir/cache" \
+        DRACCUS_BUILD="$tmpdir/build" \
+        "$DRACCUS_BUNDLE/bin/draccus" run --name same-name -- \
+        bash -lc "echo stdout-marker-$i; echo stderr-marker-$i >&2"
+    ) >"$tmpdir/run-$i.out" 2>&1 &
+    pids+=("$!")
+  done
+
+  for i in "${pids[@]}"; do
+    if ! wait "$i"; then
+      status=1
+    fi
+  done
+
+  mapfile -t run_jsons < <(find "$project/records" -name run.json -print 2>/dev/null | sort)
+  mapfile -t result_jsons < <(find "$project/records" -name result.json -print 2>/dev/null | sort)
+  if [[ "$status" -eq 0 ]] \
+    && [[ "${#run_jsons[@]}" -eq "$expected" ]] \
+    && [[ "${#result_jsons[@]}" -eq "$expected" ]]; then
+    ok=0
+    for run_json in "${run_jsons[@]}"; do
+      result_json="$(dirname "$run_json")/result.json"
+      if ! python3 -m json.tool "$run_json" >/dev/null \
+        || ! python3 -m json.tool "$result_json" >/dev/null \
+        || ! grep -qF '"exit_code": 0' "$result_json" \
+        || [[ ! -s "$(dirname "$run_json")/logs/stdout.log" ]] \
+        || [[ ! -s "$(dirname "$run_json")/logs/stderr.log" ]]; then
+        ok=1
+      fi
+    done
+    for i in $(seq 1 "$expected"); do
+      if ! grep -R -qF "stdout-marker-$i" "$project/records" \
+        || ! grep -R -qF "stderr-marker-$i" "$project/records"; then
+        ok=1
+      fi
+    done
+  fi
+
+  rm -rf "$tmpdir"
+  return "$ok"
+}
+
 # Counters for pass/fail
 pass_count=0
 fail_count=0
@@ -115,6 +326,7 @@ SHELL_FILES=(
   "$DRACCUS_BUNDLE/lib/draccus-layout.sh"
   "$DRACCUS_BUNDLE/lib/draccus-notebook.sh"
   "$DRACCUS_BUNDLE/lib/draccus-project.sh"
+  "$DRACCUS_BUNDLE/lib/draccus-run-record.sh"
   "$DRACCUS_BUNDLE/lib/draccus-runtime.sh"
   "$DRACCUS_BUNDLE/lib/draccus-shell.sh"
   "$DRACCUS_BUNDLE/lib/draccus-uv.sh"
@@ -326,6 +538,13 @@ echo "=== CHECK 8B: draccus command help ==="
 
 check "draccus --help mentions draccus shell" "\"$DRACCUS_BUNDLE/bin/draccus\" --help | grep -qF 'draccus shell'"
 check "draccus --help mentions draccus run" "\"$DRACCUS_BUNDLE/bin/draccus\" --help | grep -qF 'draccus run'"
+check "draccus run help documents --runs-dir" "\"$DRACCUS_BUNDLE/bin/draccus\" help run | grep -qF 'Relative --runs-dir values are resolved from the project root'"
+check "draccus run rejects missing draccus.yaml" "_draccus_run_rejects_missing_config"
+check "draccus run applies project bundle before runtime" "_draccus_project_command_rejects_missing_config_bundle run --no-record -- true"
+check "draccus run --no-record creates no run directory" "_draccus_run_no_record_ok"
+check "draccus run writes successful JSON record and logs" "_draccus_run_success_record_ok"
+check "draccus run preserves failure exit code and record" "_draccus_run_failure_record_ok"
+check "draccus run allocates same-name parallel records atomically" "_draccus_run_parallel_same_name_records_ok"
 check "draccus shell rejects piped stdin" "_draccus_shell_rejects_piped_stdin"
 check "draccus uv applies project bundle before runtime" "_draccus_project_command_rejects_missing_config_bundle uv --version"
 check "draccus notebook applies project bundle before runtime" "_draccus_project_command_rejects_missing_config_bundle notebook --port 9999"
@@ -361,6 +580,8 @@ check "draccus-project preserves existing pyproject metadata" "grep -qF 'created
 check "draccus-run delegates to runtime library" "grep -qF 'draccus_runtime_exec_run \"\$@\"' \"$DRACCUS_BUNDLE/bin/draccus-run\""
 check "draccus-build delegates to runtime library" "grep -qF 'draccus_runtime_exec_build \"\$@\"' \"$DRACCUS_BUNDLE/bin/draccus-build\""
 check "draccus CLI dispatches build through runtime library" "grep -qF 'draccus_runtime_exec_build \"\$@\"' \"$DRACCUS_BUNDLE/lib/draccus-cli.sh\""
+check "draccus CLI dispatches run through run-record library" "grep -qF 'draccus_run_main \"\$@\"' \"$DRACCUS_BUNDLE/lib/draccus-cli.sh\""
+check "draccus-run-record library exists" "test -f \"$DRACCUS_BUNDLE/lib/draccus-run-record.sh\""
 check "draccus-run ro-binds bundle shims to /opt/draccus/shims" "_draccus_run_binds_shims"
 check "draccus-run ro-binds host-bin to /opt/draccus/host-bin" "grep -qF -- '--ro-bind \"\$DRACCUS_BUNDLE/host-bin\" /opt/draccus/host-bin' \"$DRACCUS_RUNTIME_LIB\""
 check "draccus-run PATH leads with /opt/draccus/shims" "grep -qF 'draccus_path_views=\"/opt/draccus/shims:' \"$DRACCUS_RUNTIME_LIB\""

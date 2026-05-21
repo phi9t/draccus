@@ -273,25 +273,44 @@ Fill before the dependent phase starts.
     - =.workstream/single-command-cli/artifacts/p3.1-p3.5-validate-static.log=
 
 * Phase 4 — Recorded run :phase4:
-** TODO P4.1 Implement project-bound =draccus run=
+** DONE P4.1 Implement project-bound =draccus run=
    :PROPERTIES:
    :ID:       P4.1
-   :OWNER:
-   :STARTED:
-   :FINISHED:
+   :OWNER:   codex-implementer-task7
+   :STARTED: 2026-05-21T21:23:24Z
+   :FINISHED: 2026-05-21T21:27:39Z
    :DEPENDS:  P2.1
    :END:
    DoD: run requires =draccus.yaml=, supports =--name=, =--no-record=, and =--runs-dir=, and Gate 0 passes.
 
-** TODO P4.2 Emit operational run records by default
+*** Log
+    - Red check: added Gate 0 assertions for =draccus run= help, missing =draccus.yaml=, project bundle override, =--no-record=, successful/failing run records, exit-code preservation, and JSON validity. =validate-static.sh= failed as expected with eight =draccus run= / run-record checks.
+    - Added =lib/draccus-run-record.sh= and =draccus run= dispatch; the command now requires =draccus.yaml=, applies =bundle:= before runtime startup, sets =DRACCUS_WORKSPACE= to the project root, supports =--name=, =--no-record=, and =--runs-dir=, and documents relative runs-dir resolution.
+    - Verified =PATH="$HOME/.local/bin:$PATH" env -u DRACCUS_BUNDLE DRACCUS_ROOTFS=/data02/home/philip.yang/draccus/rootfs ./scripts/validate-static.sh=.
+
+*** Artifacts
+    - =.workstream/single-command-cli/artifacts/p4.1-red-validate-static.log=
+    - =.workstream/single-command-cli/artifacts/p4.1-p4.2-validate-static.log=
+
+** DONE P4.2 Emit operational run records by default
    :PROPERTIES:
    :ID:       P4.2
-   :OWNER:
-   :STARTED:
-   :FINISHED:
+   :OWNER:   codex-implementer-task7
+   :STARTED: 2026-05-21T21:27:39Z
+   :FINISHED: 2026-05-21T21:28:18Z
    :DEPENDS:  P4.1
    :END:
    DoD: successful and failed commands create run dirs with command, cwd, project id, bundle path, timestamps, exit code, and stdout/stderr logs; output streams live; child exit code is preserved.
+
+*** Log
+    - The run record library writes =run.json= with command argv, original cwd, project root, project name/id, bundle path, run id, and started timestamp. It writes =result.json= with finished timestamp and exit code after the runtime command exits.
+    - Wrapped recorded runtime execution in a subshell because =draccus_runtime_exec_run= uses =exec=; this lets the parent write =result.json= while preserving the child exit code.
+    - Verified manual probes through =draccus project init=: successful run streamed/wrote stdout+stderr and JSON records, failing run exited 7 and wrote =exit_code= 7, and =--no-record= created no additional run directory.
+    - Task 7 review follow-up 2026-05-21T21:39:02Z: fixed same-second same-name run collisions by atomically claiming run directories with plain =mkdir= before creating =logs/=, and added a Gate 0 parallel regression check.
+
+*** Artifacts
+    - =.workstream/single-command-cli/artifacts/p4.2-manual-probes.log=
+    - =.workstream/single-command-cli/artifacts/p4.1-p4.2-validate-static.log=
 
 * Phase 5 — Remove legacy surface and enforce validation :phase5:
 ** TODO P5.1 Remove legacy per-command entrypoints

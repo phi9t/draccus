@@ -87,7 +87,10 @@ draccus_help_run() {
 Usage:
   draccus run [--name NAME] [--no-record] [--runs-dir DIR] -- <cmd> [args...]
 
-Run a project command inside Draccus. Recording support is not implemented yet.
+Run a project command inside Draccus. A draccus.yaml project is required.
+By default, stdout/stderr stream live and are also written to a run directory.
+Relative runs_dir values in draccus.yaml are resolved from the project root.
+Relative --runs-dir values are resolved from the project root.
 EOF
 }
 
@@ -311,11 +314,14 @@ draccus_dispatch() {
       fi
       ;;
     run)
-      if [[ "${2:-}" == "--help" || "${2:-}" == "-h" ]]; then
+      shift
+      if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
         draccus_help "$command"
         return 0
       fi
-      draccus_die "subcommand '$command' is not implemented yet; try 'draccus help $command'"
+      # shellcheck source=draccus-run-record.sh
+      source "$DRACCUS_BUNDLE/lib/draccus-run-record.sh"
+      draccus_run_main "$@"
       ;;
     *)
       draccus_die "unknown subcommand: $command"
