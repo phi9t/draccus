@@ -1,8 +1,8 @@
 [project]
-# Project name — replaced by draccus-project-init
+# Project name - replaced by draccus project init
 name = "REPLACE_ME"
 version = "0.0.0"
-# requires-python is written by draccus-project-init from the X.Y version of
-# /opt/draccus/view/base-ml/bin/python — do NOT hardcode a version here.
+# requires-python is written by draccus project init from the X.Y version of
+# /opt/draccus/view/base-ml/bin/python. Do not hardcode a version here.
 requires-python = ">=PYTHON_VERSION"
 dependencies = []

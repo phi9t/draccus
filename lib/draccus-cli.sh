@@ -166,7 +166,20 @@ draccus_dispatch() {
       source "$DRACCUS_BUNDLE/lib/draccus-runtime.sh"
       draccus_runtime_exec_build "$@"
       ;;
-    shell | run | uv | doctor | notebook | project | bundle)
+    project)
+      shift
+      if [[ "${1:-}" == "--help" || "${1:-}" == "-h" || -z "${1:-}" ]]; then
+        draccus_help "$command"
+        return 0
+      fi
+      if [[ "${1:-}" != "init" ]]; then
+        draccus_die "project expects subcommand 'init'; usage: draccus project init <name> [--path PATH]"
+      fi
+      # shellcheck source=draccus-project.sh
+      source "$DRACCUS_BUNDLE/lib/draccus-project.sh"
+      draccus_project_init_main "$@"
+      ;;
+    shell | run | uv | doctor | notebook | bundle)
       if [[ "${2:-}" == "--help" || "${2:-}" == "-h" ]]; then
         draccus_help "$command"
         return 0

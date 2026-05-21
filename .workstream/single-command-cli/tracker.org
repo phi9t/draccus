@@ -153,15 +153,29 @@ Fill before the dependent phase starts.
     - =.workstream/single-command-cli/artifacts/p2.1-red-validate-static-worktree.log=
     - =.workstream/single-command-cli/artifacts/p2.1-final-validate-static.log=
 
-** TODO P2.2 Implement =draccus project init=
+** DONE P2.2 Implement =draccus project init=
    :PROPERTIES:
    :ID:       P2.2
-   :OWNER:
-   :STARTED:
-   :FINISHED:
+   :OWNER:   codex-implementer
+   :STARTED: 2026-05-21T20:13:25Z
+   :FINISHED: 2026-05-21T20:16:36Z
    :DEPENDS:  P2.1
    :END:
    DoD: command initializes git root or managed project, writes =draccus.yaml=, creates/updates =pyproject.toml=, creates =.venv= and =uv.lock=, neutralizes pip, and Gate 0 passes.
+
+*** Log
+    - Red check: =env -u DRACCUS_BUNDLE DRACCUS_ROOTFS=/data02/home/philip.yang/draccus/rootfs DRACCUS_HOME="$tmp_home" ./bin/draccus project init smoke-plan= failed as expected because =project= dispatch was not implemented.
+    - Implemented =draccus_project_init_main= with name validation, optional =--path=, git-root/managed-project root selection, template file creation, runtime =.python-version=/=requires-python=/=.venv=/=uv.lock= setup, and pip neutralization.
+    - Updated =draccus project init= dispatch and the project template README/pyproject plus =draccus.yaml= skeleton.
+    - Verified managed-project initialization with the Task 5 command sequence using =DRACCUS_HOME="$(mktemp -d)"=.
+    - Verified git-root initialization from a nested directory in a temporary git repository.
+    - Verified =env -u DRACCUS_BUNDLE DRACCUS_ROOTFS=/data02/home/philip.yang/draccus/rootfs ./scripts/validate-static.sh=.
+
+*** Artifacts
+    - =.workstream/single-command-cli/artifacts/p2.2-red-project-init.log=
+    - =.workstream/single-command-cli/artifacts/p2.2-project-init-managed.log=
+    - =.workstream/single-command-cli/artifacts/p2.2-project-init-git-root.log=
+    - =.workstream/single-command-cli/artifacts/p2.2-validate-static.log=
 
 * Phase 3 — Daily workflow commands :phase3:
 ** TODO P3.1 Implement native interactive =draccus shell=
