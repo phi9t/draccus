@@ -61,6 +61,7 @@ check() {
 echo "=== CHECK 1: Shell lint (shellcheck) ==="
 
 SHELL_FILES=(
+  "$DRACCUS_BUNDLE/bin/draccus"
   "$DRACCUS_BUNDLE/bin/draccus-build"
   "$DRACCUS_BUNDLE/bin/draccus-offline"
   "$DRACCUS_BUNDLE/bin/draccus-probe"
@@ -70,6 +71,7 @@ SHELL_FILES=(
   "$DRACCUS_BUNDLE/bin/draccus-debug-shell"
   "$DRACCUS_BUNDLE/bin/draccus-uv"
   "$DRACCUS_BUNDLE/host-bin/nvidia-smi"
+  "$DRACCUS_BUNDLE/lib/draccus-cli.sh"
   "$DRACCUS_BUNDLE/lib/draccus-project.sh"
   "$DRACCUS_BUNDLE/lib/draccus-uv.sh"
   "$DRACCUS_BUNDLE/shims/pip"
@@ -255,6 +257,7 @@ echo ""
 echo "=== CHECK 8: Launcher executability ==="
 
 LAUNCHERS=(
+  "$DRACCUS_BUNDLE/bin/draccus"
   "$DRACCUS_BUNDLE/bin/draccus-run"
   "$DRACCUS_BUNDLE/bin/draccus-build"
   "$DRACCUS_BUNDLE/bin/draccus-offline"
@@ -268,6 +271,17 @@ LAUNCHERS=(
 for launcher in "${LAUNCHERS[@]}"; do
   check "executable: $(basename "$launcher")" "test -x \"$launcher\""
 done
+
+echo ""
+
+# ============================================================================
+# CHECK 8B - draccus command help
+# ============================================================================
+
+echo "=== CHECK 8B: draccus command help ==="
+
+check "draccus --help mentions draccus shell" "\"$DRACCUS_BUNDLE/bin/draccus\" --help | grep -qF 'draccus shell'"
+check "draccus --help mentions draccus run" "\"$DRACCUS_BUNDLE/bin/draccus\" --help | grep -qF 'draccus run'"
 
 echo ""
 

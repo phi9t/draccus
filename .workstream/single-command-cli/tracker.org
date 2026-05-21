@@ -83,15 +83,27 @@ Fill before the dependent phase starts.
    DoD: all subsections under =* Decisions= have =DECIDED_BY= and =DECIDED_ON=.
 
 * Phase 1 — CLI router and libraries :phase1:
-** TODO P1.1 Add thin =bin/draccus= dispatcher
+** DONE P1.1 Add thin =bin/draccus= dispatcher
    :PROPERTIES:
    :ID:       P1.1
-   :OWNER:
-   :STARTED:
-   :FINISHED:
+   :OWNER:   codex-implementer
+   :STARTED: 2026-05-21T19:33:02Z
+   :FINISHED: 2026-05-21T19:35:59Z
    :DEPENDS:  P0.2
    :END:
    DoD: =bin/draccus --help= and subcommand help render polished usage text; Gate 0 passes.
+
+*** Log
+    - Red check: =DRACCUS_BUNDLE=$PWD ./scripts/validate-static.sh= failed as expected because =bin/draccus= was missing and help checks were unavailable; the linked worktree also lacks generated =rootfs/=.
+    - Implemented =bin/draccus= and =lib/draccus-cli.sh= with help-only dispatch for the approved initial command surface.
+    - Verified =DRACCUS_BUNDLE=$PWD ./bin/draccus --help=.
+    - Verified =DRACCUS_BUNDLE=$PWD ./bin/draccus help run=.
+    - Verified =DRACCUS_BUNDLE=$PWD DRACCUS_ROOTFS=/data02/home/philip.yang/draccus/rootfs ./scripts/validate-static.sh=.
+
+*** Artifacts
+    - =.workstream/single-command-cli/artifacts/p1.1-red-validate-static.log=
+    - =.workstream/single-command-cli/artifacts/p1.1-green-validate-static.log=
+    - =.workstream/single-command-cli/artifacts/p1.1-final-validate-static.log=
 
 ** TODO P1.2 Move reusable runtime selection and CLI helpers into =lib/=
    :PROPERTIES:
