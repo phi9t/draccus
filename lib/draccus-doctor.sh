@@ -5,7 +5,7 @@
 # shellcheck source=draccus-layout.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/draccus-layout.sh"
 # shellcheck source=draccus-runtime.sh
-source "$DRACCUS_BUNDLE/lib/draccus-runtime.sh"
+source "${DRACCUS_CLI_ROOT:-$DRACCUS_BUNDLE}/lib/draccus-runtime.sh"
 
 draccus_doctor_emit_json() {
   local ok="$1"
@@ -68,7 +68,7 @@ draccus_doctor_main() {
 
   if [[ ! -d "$bundle" || ! -e "$rootfs/bin/sh" ]]; then
     draccus_doctor_fail "$json" "$bundle" "selected bundle is missing or incomplete: $bundle" \
-      "Install one with: draccus bundle unpack <archive>"
+      "Bootstrap a bundle first or set DRACCUS_BUNDLE to an existing Draccus checkout/bundle."
     return 1
   fi
 

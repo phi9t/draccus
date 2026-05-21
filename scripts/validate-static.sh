@@ -46,6 +46,25 @@ _draccus_no_legacy_public_entrypoints() {
   done
 }
 
+_draccus_cli_respects_bundle_env() {
+  local tmpdir output status ok=1
+  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/draccus-selected-bundle.XXXXXX")"
+
+  set +e
+  output="$(env DRACCUS_BUNDLE="$tmpdir" "$DRACCUS_BUNDLE/bin/draccus" bundle show --json 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]] \
+    && printf '%s\n' "$output" | python3 -m json.tool >/dev/null \
+    && [[ "$output" == *"\"bundle\":\"$tmpdir\""* ]]; then
+    ok=0
+  fi
+
+  rm -rf "$tmpdir"
+  return "$ok"
+}
+
 _draccus_no_stale_active_public_refs() {
   local files=(
     "$DRACCUS_BUNDLE/AGENTS.md"
@@ -84,6 +103,61 @@ _draccus_shell_rejects_piped_stdin() {
     && [[ "$output" != *DRACCUS_PIPE_TEST* ]] \
     && [[ "$output" == *"draccus shell is interactive-only"* ]] \
     && [[ "$output" == *"draccus run"* ]]
+}
+
+_draccus_shell_applies_project_context() {
+  local tmpdir project subdir selected_bundle quoted_cmd ok=1
+  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/draccus-shell-project-context.XXXXXX")"
+  project="$tmpdir/project"
+  subdir="$project/nested/path"
+  selected_bundle="$tmpdir/selected-bundle"
+  mkdir -p \
+    "$subdir" \
+    "$selected_bundle/scripts" \
+    "$selected_bundle/cache/starship/bin" \
+    "$selected_bundle/rootfs/bin" \
+    "$tmpdir/bin"
+  touch "$selected_bundle/rootfs/bin/sh"
+  cat >"$project/draccus.yaml" <<EOF
+name: shell-project-context
+bundle: $selected_bundle
+EOF
+
+  cat >"$selected_bundle/scripts/starship-version.env" <<'EOF'
+STARSHIP_VERSION=v0.0.0
+STARSHIP_URL=https://invalid.local/starship.tar.gz
+STARSHIP_SHA256=0000000000000000000000000000000000000000000000000000000000000000
+EOF
+  cat >"$selected_bundle/cache/starship/bin/starship" <<'EOF'
+#!/usr/bin/env bash
+echo "starship 0.0.0"
+EOF
+  chmod +x "$selected_bundle/cache/starship/bin/starship"
+
+  cat >"$tmpdir/bin/fake-bwrap" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >"$FAKE_BWRAP_LOG"
+exit 0
+EOF
+  chmod +x "$tmpdir/bin/fake-bwrap"
+
+  quoted_cmd="$(
+    printf 'cd %q && BWRAP=%q FAKE_BWRAP_LOG=%q %q shell' \
+      "$subdir" \
+      "$tmpdir/bin/fake-bwrap" \
+      "$tmpdir/bwrap.log" \
+      "$DRACCUS_BUNDLE/bin/draccus"
+  )"
+
+  if script -q -e -c "$quoted_cmd" /dev/null >/dev/null 2>&1; then
+    if grep -qF -- "--ro-bind $selected_bundle/rootfs /" "$tmpdir/bwrap.log" \
+      && grep -qF -- "--bind $project /workspace" "$tmpdir/bwrap.log"; then
+      ok=0
+    fi
+  fi
+
+  rm -rf "$tmpdir"
+  return "$ok"
 }
 
 _draccus_project_command_rejects_missing_config_bundle() {
@@ -323,6 +397,60 @@ EOF
   return "$ok"
 }
 
+_draccus_uv_explicit_pip_target_does_not_auto_target_workspace() {
+  local tmpdir project calls ok=1
+  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/draccus-uv-explicit-target.XXXXXX")"
+  project="$tmpdir/project"
+  mkdir -p "$project/.venv/bin" "$tmpdir/bin" "$tmpdir/rootfs/bin"
+  touch "$project/.venv/pyvenv.cfg" "$tmpdir/rootfs/bin/sh"
+  cat >"$project/draccus.yaml" <<'EOF'
+name: uv-explicit-target
+EOF
+
+  cat >"$tmpdir/bin/fake-bwrap" <<'EOF'
+#!/usr/bin/env bash
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--chdir" ]]; then
+    shift 2
+    exec "$@"
+  fi
+  shift
+done
+echo "fake-bwrap: missing --chdir" >&2
+exit 2
+EOF
+  chmod +x "$tmpdir/bin/fake-bwrap"
+
+  cat >"$tmpdir/bin/uv" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$FAKE_UV_LOG"
+EOF
+  chmod +x "$tmpdir/bin/uv"
+
+  if (
+    cd "$project"
+    PATH="$tmpdir/bin:$PATH" \
+      BWRAP="$tmpdir/bin/fake-bwrap" \
+      FAKE_UV_LOG="$tmpdir/uv.log" \
+      DRACCUS_ROOTFS="$tmpdir/rootfs" \
+      DRACCUS_STATE="$tmpdir/state" \
+      DRACCUS_CACHE="$tmpdir/cache" \
+      DRACCUS_BUILD="$tmpdir/build" \
+      "$DRACCUS_BUNDLE/bin/draccus" uv pip install --python /tmp/custom-python okpkg
+  ); then
+    calls="$(wc -l <"$tmpdir/uv.log")"
+    if [[ "$calls" -eq 2 ]] \
+      && grep -qF 'pip install --dry-run --python /tmp/custom-python okpkg' "$tmpdir/uv.log" \
+      && grep -qF 'pip install --python /tmp/custom-python okpkg' "$tmpdir/uv.log" \
+      && ! grep -qF '/workspace/.venv/bin/python' "$tmpdir/uv.log"; then
+      ok=0
+    fi
+  fi
+
+  rm -rf "$tmpdir"
+  return "$ok"
+}
+
 # Counters for pass/fail
 pass_count=0
 fail_count=0
@@ -544,6 +672,7 @@ echo "=== CHECK 8: Launcher executability ==="
 
 check "no legacy public entrypoints" "_draccus_no_legacy_public_entrypoints"
 check "executable: draccus" "test -x \"$DRACCUS_BUNDLE/bin/draccus\""
+check "draccus respects DRACCUS_BUNDLE override" "_draccus_cli_respects_bundle_env"
 
 echo ""
 
@@ -563,6 +692,7 @@ check "draccus run writes successful JSON record and logs" "_draccus_run_success
 check "draccus run preserves failure exit code and record" "_draccus_run_failure_record_ok"
 check "draccus run allocates same-name parallel records atomically" "_draccus_run_parallel_same_name_records_ok"
 check "draccus shell rejects piped stdin" "_draccus_shell_rejects_piped_stdin"
+check "draccus shell applies project bundle and workspace context" "_draccus_shell_applies_project_context"
 check "draccus uv applies project bundle before runtime" "_draccus_project_command_rejects_missing_config_bundle uv --version"
 check "draccus notebook applies project bundle before runtime" "_draccus_project_command_rejects_missing_config_bundle notebook --port 9999"
 
@@ -624,6 +754,7 @@ check "draccus CLI dispatches uv through uv library" "grep -qF 'draccus_uv_main 
 check "draccus uv auto-targets workspace .venv for pip installs" "grep -qF -- '--python /workspace/.venv/bin/python' \"$DRACCUS_BUNDLE/lib/draccus-uv.sh\""
 check "draccus uv blocks direct foundation package installs" "grep -qF 'refusing to install foundation package' \"$DRACCUS_BUNDLE/lib/draccus-uv.sh\""
 check "draccus uv audits resolved install plans" "grep -qF -- '--dry-run' \"$DRACCUS_BUNDLE/lib/draccus-uv.sh\""
+check "draccus uv explicit pip target does not also target workspace venv" "_draccus_uv_explicit_pip_target_does_not_auto_target_workspace"
 
 echo ""
 

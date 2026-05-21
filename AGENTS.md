@@ -57,7 +57,7 @@ To change it: get explicit user approval AND update both the array AND this file
 - uv owns: transformers, datasets, accelerate, peft, trl, vllm, flash-attn, etc.
 
 Never write uv pip install torch, uv pip install jax, uv pip install numpy, etc.
-Always create project venvs with: ./bin/draccus uv venv --python $(which python) --system-site-packages .venv
+Prefer `./bin/draccus project init <name>` to create project venvs. If you need to recreate one manually, run: `./bin/draccus uv venv --python /opt/draccus/view/base-ml/bin/python --system-site-packages .venv`
 Always install packages with: ./bin/draccus uv pip install transformers datasets accelerate
 
 ### 3. Canonical prefix contract

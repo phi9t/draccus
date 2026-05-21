@@ -1,0 +1,157 @@
+=== CHECK 1: Shell lint (shellcheck) ===
+[PASS] shellcheck: draccus
+[PASS] shellcheck: nvidia-smi
+[PASS] shellcheck: draccus-cli.sh
+[PASS] shellcheck: draccus-doctor.sh
+[PASS] shellcheck: draccus-layout.sh
+[PASS] shellcheck: draccus-notebook.sh
+[PASS] shellcheck: draccus-project.sh
+[PASS] shellcheck: draccus-run-record.sh
+[PASS] shellcheck: draccus-runtime.sh
+[PASS] shellcheck: draccus-shell.sh
+[PASS] shellcheck: draccus-uv.sh
+[PASS] shellcheck: pip
+[PASS] shellcheck: bootstrap-rootfs.sh
+[PASS] shellcheck: prune-draccus.sh
+[PASS] shellcheck: refresh-spack-lockfiles.sh
+[PASS] shellcheck: validate-all.sh
+[PASS] shellcheck: validate-base-ml.sh
+[PASS] shellcheck: validate-base-sys.sh
+[PASS] shellcheck: validate-project-overlay.sh
+[PASS] shellcheck: validate_uv_layering.sh
+[PASS] shellcheck: coco-probe-models.sh
+
+=== CHECK 2: Shell format (shfmt) ===
+[PASS] shfmt: draccus
+[PASS] shfmt: nvidia-smi
+[PASS] shfmt: draccus-cli.sh
+[PASS] shfmt: draccus-doctor.sh
+[PASS] shfmt: draccus-layout.sh
+[PASS] shfmt: draccus-notebook.sh
+[PASS] shfmt: draccus-project.sh
+[PASS] shfmt: draccus-run-record.sh
+[PASS] shfmt: draccus-runtime.sh
+[PASS] shfmt: draccus-shell.sh
+[PASS] shfmt: draccus-uv.sh
+[PASS] shfmt: pip
+[PASS] shfmt: bootstrap-rootfs.sh
+[PASS] shfmt: prune-draccus.sh
+[PASS] shfmt: refresh-spack-lockfiles.sh
+[PASS] shfmt: validate-all.sh
+[PASS] shfmt: validate-base-ml.sh
+[PASS] shfmt: validate-base-sys.sh
+[PASS] shfmt: validate-project-overlay.sh
+[PASS] shfmt: validate_uv_layering.sh
+[PASS] shfmt: coco-probe-models.sh
+
+=== CHECK 3: Python lint (ruff) ===
+[PASS] ruff: validate_foundation.py
+
+=== CHECK 4: YAML lint (yamllint) ===
+[NOTE] No additional YAML files to lint (spack.yaml excluded; validated by Check 5)
+
+=== CHECK 5: Spack YAML structural check ===
+[PASS] spack.yaml exists: base-sys
+[PASS] spack.yaml exists: base-ml
+[PASS] base-sys: 'view:' present
+[PASS] base-sys: 'concretizer:' present
+[PASS] base-sys: 'specs:' present
+[PASS] base-ml: 'view:' present
+[PASS] base-ml: 'concretizer:' present
+[PASS] base-ml: 'specs:' present
+[PASS] base-sys: concretizer unify: true
+[PASS] base-ml: concretizer unify: true
+[PASS] base-ml: 'cuda_arch=100' present
+[PASS] base-ml: 'python@3.12' present
+
+=== CHECK 6: Do-not-shadow consistency ===
+[PASS] DO_NOT_SHADOW contains: torch
+[PASS] DO_NOT_SHADOW contains: jax
+[PASS] DO_NOT_SHADOW contains: jaxlib
+[PASS] DO_NOT_SHADOW contains: numpy
+[PASS] DO_NOT_SHADOW contains: scipy
+[PASS] DO_NOT_SHADOW contains: triton
+
+=== CHECK 7: Rootfs stamp ===
+[NOTE] rootfs/ directory not yet bootstrapped, skipping stamp check
+
+=== CHECK 8: Launcher executability ===
+[PASS] no legacy public entrypoints
+[PASS] executable: draccus
+[PASS] draccus respects DRACCUS_BUNDLE override
+
+=== CHECK 8B: draccus command help ===
+[PASS] draccus --help mentions draccus shell
+[PASS] draccus --help mentions draccus run
+[PASS] draccus run help documents --runs-dir
+[PASS] draccus run rejects missing draccus.yaml
+[PASS] draccus run applies project bundle before runtime
+[PASS] draccus run --no-record creates no run directory
+[PASS] draccus run writes successful JSON record and logs
+[PASS] draccus run preserves failure exit code and record
+[PASS] draccus run allocates same-name parallel records atomically
+[PASS] draccus shell rejects piped stdin
+[PASS] draccus shell applies project bundle and workspace context
+[PASS] draccus uv applies project bundle before runtime
+[PASS] draccus notebook applies project bundle before runtime
+
+=== CHECK 9: pinned uv + pip shims (static) ===
+[PASS] uv-version.env exists
+[PASS] uv-version: semver + 64-hex sha256
+[PASS] shims directory: exactly pip + pip3
+[PASS] shims/pip executable
+[PASS] shims/pip3 present
+[PASS] shims/pip contains sentinel
+[PASS] shims/pip3 contains sentinel
+[PASS] shims/pip directs users to draccus uv pip
+[PASS] active docs/config have no legacy public command refs
+[PASS] pre-commit shell hooks include bin/draccus
+[PASS] pre-commit shell hooks do not target legacy draccus wildcard
+[PASS] mise project tasks document explicit project selection
+[PASS] mise validate avoids unmounted /opt/draccus scripts
+[PASS] validate-all calls the defined mise validation task
+[PASS] draccus-runtime library exists
+[PASS] draccus-layout library exists
+[PASS] draccus-layout exposes shared roots
+[PASS] draccus-layout exposes slug helper
+[PASS] draccus-project discovers draccus.yaml
+[PASS] draccus-project parses yaml values
+[PASS] draccus-project reports missing config guidance
+[PASS] draccus-project validates parsed DO_NOT_SHADOW sentinels
+[PASS] draccus-project refuses mismatched existing config name
+[PASS] draccus-project preserves existing pyproject metadata
+[PASS] draccus CLI dispatches build through runtime library
+[PASS] draccus CLI dispatches run through run-record library
+[PASS] draccus-run-record library exists
+[PASS] runtime run mode ro-binds bundle shims to /opt/draccus/shims
+[PASS] runtime run mode ro-binds host-bin to /opt/draccus/host-bin
+[PASS] runtime run mode PATH leads with /opt/draccus/shims
+[PASS] runtime run mode PATH includes host-bin
+[PASS] runtime run mode PATH includes spack bin
+[PASS] runtime run mode PATH includes starship cache bin
+[PASS] draccus shell sources Spack setup
+[PASS] runtime run mode disables Spack locks for readonly inspection
+[PASS] runtime run mode mirrors Spack env metadata for readonly activation
+[PASS] draccus shell rewrites managed env activation to readonly mirror
+[PASS] draccus shell launches zsh
+[PASS] draccus shell configures starship
+[PASS] starship-version.env exists
+[PASS] runtime run mode exports base-ml PYTHONPATH
+[PASS] runtime has no host_uv / DRACCUS_HOST_UV_BIN
+[PASS] host-bin/nvidia-smi fallback executable
+[PASS] draccus CLI dispatches uv through uv library
+[PASS] draccus uv auto-targets workspace .venv for pip installs
+[PASS] draccus uv blocks direct foundation package installs
+[PASS] draccus uv audits resolved install plans
+[PASS] draccus uv explicit pip target does not also target workspace venv
+
+=== CHECK 10: Gate 0 runtime-boundary guard ===
+[PASS] Gate 0 does not run draccus doctor
+
+========================================
+           VALIDATION SUMMARY
+========================================
+Passed: 126
+Failed: 0
+========================================
+RESULT: SUCCESS (all checks passed)

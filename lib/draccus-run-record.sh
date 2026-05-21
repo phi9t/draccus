@@ -150,7 +150,7 @@ draccus_run_main() {
   draccus_project_apply_bundle_from_config "$config" || return $?
 
   # shellcheck source=draccus-runtime.sh
-  source "$DRACCUS_BUNDLE/lib/draccus-runtime.sh"
+  source "${DRACCUS_CLI_ROOT:-$DRACCUS_BUNDLE}/lib/draccus-runtime.sh"
 
   bundle_path="$(cd "$DRACCUS_BUNDLE" && pwd -P)"
   original_cwd="$(pwd -P)"

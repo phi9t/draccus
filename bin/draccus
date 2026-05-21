@@ -2,11 +2,16 @@
 set -euo pipefail
 
 _draccus_bin="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DRACCUS_BUNDLE="$(cd "$_draccus_bin/.." && pwd)"
+DRACCUS_CLI_ROOT="$(cd "$_draccus_bin/.." && pwd)"
 unset _draccus_bin
+export DRACCUS_CLI_ROOT
+
+if [[ -z "${DRACCUS_BUNDLE:-}" ]]; then
+  DRACCUS_BUNDLE="$DRACCUS_CLI_ROOT"
+fi
 export DRACCUS_BUNDLE
 
 # shellcheck source=../lib/draccus-cli.sh
-source "$DRACCUS_BUNDLE/lib/draccus-cli.sh"
+source "$DRACCUS_CLI_ROOT/lib/draccus-cli.sh"
 
 draccus_dispatch "$@"

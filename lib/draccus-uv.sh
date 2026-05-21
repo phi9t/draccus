@@ -176,7 +176,7 @@ draccus_uv_main() {
   export DRACCUS_WORKSPACE
 
   # shellcheck source=draccus-runtime.sh
-  source "$DRACCUS_BUNDLE/lib/draccus-runtime.sh"
+  source "${DRACCUS_CLI_ROOT:-$DRACCUS_BUNDLE}/lib/draccus-runtime.sh"
 
   case "$cmd:$pip_cmd" in
     pip:install | pip:sync | pip:uninstall)

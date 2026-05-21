@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+draccus_cli_lib_root() {
+  printf '%s\n' "${DRACCUS_CLI_ROOT:-$DRACCUS_BUNDLE}"
+}
+
 draccus_die() {
   echo "draccus: $*" >&2
   exit 2
@@ -219,7 +223,7 @@ draccus_dispatch() {
         draccus_die "build requires a command; usage: draccus build -- <cmd> [args...]"
       fi
       # shellcheck source=draccus-runtime.sh
-      source "$DRACCUS_BUNDLE/lib/draccus-runtime.sh"
+      source "$(draccus_cli_lib_root)/lib/draccus-runtime.sh"
       draccus_runtime_exec_build "$@"
       ;;
     shell)
@@ -229,7 +233,7 @@ draccus_dispatch() {
         return 0
       fi
       # shellcheck source=draccus-shell.sh
-      source "$DRACCUS_BUNDLE/lib/draccus-shell.sh"
+      source "$(draccus_cli_lib_root)/lib/draccus-shell.sh"
       draccus_shell_main "$@"
       ;;
     uv)
@@ -239,7 +243,7 @@ draccus_dispatch() {
         return 0
       fi
       # shellcheck source=draccus-uv.sh
-      source "$DRACCUS_BUNDLE/lib/draccus-uv.sh"
+      source "$(draccus_cli_lib_root)/lib/draccus-uv.sh"
       draccus_uv_main "$@"
       ;;
     notebook)
@@ -249,7 +253,7 @@ draccus_dispatch() {
         return 0
       fi
       # shellcheck source=draccus-notebook.sh
-      source "$DRACCUS_BUNDLE/lib/draccus-notebook.sh"
+      source "$(draccus_cli_lib_root)/lib/draccus-notebook.sh"
       draccus_notebook_main "$@"
       ;;
     doctor)
@@ -259,7 +263,7 @@ draccus_dispatch() {
         return 0
       fi
       # shellcheck source=draccus-doctor.sh
-      source "$DRACCUS_BUNDLE/lib/draccus-doctor.sh"
+      source "$(draccus_cli_lib_root)/lib/draccus-doctor.sh"
       draccus_doctor_main "$@"
       ;;
     project)
@@ -272,7 +276,7 @@ draccus_dispatch() {
         draccus_die "project expects subcommand 'init'; usage: draccus project init <name> [--path PATH]"
       fi
       # shellcheck source=draccus-project.sh
-      source "$DRACCUS_BUNDLE/lib/draccus-project.sh"
+      source "$(draccus_cli_lib_root)/lib/draccus-project.sh"
       draccus_project_init_main "$@"
       ;;
     bundle)
@@ -300,7 +304,7 @@ draccus_dispatch() {
       done
 
       # shellcheck source=draccus-layout.sh
-      source "$DRACCUS_BUNDLE/lib/draccus-layout.sh"
+      source "$(draccus_cli_lib_root)/lib/draccus-layout.sh"
       local default_bundle active_bundle
       default_bundle="$(draccus_default_bundle)"
       active_bundle="${DRACCUS_BUNDLE:-$default_bundle}"
@@ -320,7 +324,7 @@ draccus_dispatch() {
         return 0
       fi
       # shellcheck source=draccus-run-record.sh
-      source "$DRACCUS_BUNDLE/lib/draccus-run-record.sh"
+      source "$(draccus_cli_lib_root)/lib/draccus-run-record.sh"
       draccus_run_main "$@"
       ;;
     *)

@@ -402,7 +402,7 @@ EOF
   fi
 
   # shellcheck source=draccus-runtime.sh
-  source "$DRACCUS_BUNDLE/lib/draccus-runtime.sh"
+  source "${DRACCUS_CLI_ROOT:-$DRACCUS_BUNDLE}/lib/draccus-runtime.sh"
 
   (
     DRACCUS_WORKSPACE="$root" draccus_runtime_exec_run bash -lc '

@@ -1,7 +1,7 @@
 # Workstream: Single Command CLI
 
 **Owner:** unassigned
-**Status:** Active - next implementation action is Phase 0 preflight and decision recording.
+**Status:** Done - single `draccus` command surface landed and accepted on 2026-05-21.
 **Target completion:** Unscheduled
 **Related docs:** `docs/training-substrate-roadmap.md`, `DESIGN.md`, `README.md`, `AGENTS.md`
 

@@ -2,6 +2,9 @@
 # Draccus native interactive shell logic.
 # Source this file; do not execute directly.
 
+# shellcheck source=draccus-project.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/draccus-project.sh"
+
 draccus_shell_ensure_starship() {
   # shellcheck source=../scripts/starship-version.env
   source "$DRACCUS_BUNDLE/scripts/starship-version.env"
@@ -124,7 +127,7 @@ EOF
 
 draccus_shell_main() {
   local bundle_override=""
-  local selected_bundle
+  local selected_bundle config project_root
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -149,12 +152,22 @@ draccus_shell_main() {
     return 2
   fi
 
+  if config="$(draccus_project_config_path 2>/dev/null)"; then
+    project_root="$(draccus_project_root_from_config "$config")"
+    DRACCUS_WORKSPACE="$(cd "$project_root" && pwd -P)"
+    export DRACCUS_WORKSPACE
+
+    if [[ -z "$bundle_override" ]]; then
+      draccus_project_apply_bundle_from_config "$config" || return $?
+    fi
+  fi
+
   if [[ -n "$bundle_override" ]]; then
     if [[ ! -d "$bundle_override" ]]; then
       echo "draccus shell: selected bundle does not exist: $bundle_override" >&2
       return 2
     fi
-    selected_bundle="$(cd "$bundle_override" && pwd)"
+    selected_bundle="$(cd "$bundle_override" && pwd -P)"
     DRACCUS_BUNDLE="$selected_bundle"
     export DRACCUS_BUNDLE
     unset DRACCUS_ROOTFS DRACCUS_STATE DRACCUS_CACHE DRACCUS_BUILD
@@ -164,7 +177,7 @@ draccus_shell_main() {
   export DRACCUS_CACHE
 
   # shellcheck source=draccus-runtime.sh
-  source "$DRACCUS_BUNDLE/lib/draccus-runtime.sh"
+  source "${DRACCUS_CLI_ROOT:-$DRACCUS_BUNDLE}/lib/draccus-runtime.sh"
 
   draccus_shell_ensure_starship
   draccus_shell_write_zdotdir

@@ -17,18 +17,9 @@ The `**Status:**` line at the top of each `design.md` is the canonical status. U
 
 ## Active
 
-### `single-command-cli` — one public `draccus` command
-
-- **Status:** Active — Phase 6 documentation is done; next implementation action is final acceptance P6.2.
-- **Owner:** unassigned.
-- **What it covers:** breaking CLI consolidation around `bin/draccus`; recorded `run`; native `shell`; project-bound `uv` and `notebook`; `doctor`; `build`; `project init`; initial `bundle show`; removal of legacy public entrypoints; Gate 0 and docs updates.
-- **Read first:** [`single-command-cli/design.md`](single-command-cli/design.md), then [`single-command-cli/tracker.org`](single-command-cli/tracker.org) `* Decisions` and P6.
-- **Depends on:** current runtime foundation and project overlay work.
-- **Blocks:** `bundle-packaging`, `runtime-provenance`.
-
 ### `bundle-packaging` — local foundation bundle distribution
 
-- **Status:** Active — blocked on `single-command-cli` landing the `draccus bundle` namespace.
+- **Status:** Active — unblocked by `single-command-cli`; next action is to implement `draccus bundle pack/unpack/show` on top of the landed bundle namespace.
 - **Owner:** unassigned.
 - **What it covers:** `draccus bundle pack/unpack/show`, default install under `~/.automata/draccus/bundles/default`, local archive manifest, include/exclude policy, unpack overwrite safety.
 - **Read first:** [`bundle-packaging/design.md`](bundle-packaging/design.md), then [`bundle-packaging/tracker.org`](bundle-packaging/tracker.org).
@@ -37,7 +28,7 @@ The `**Status:**` line at the top of each `design.md` is the canonical status. U
 
 ### `runtime-provenance` — richer recorded run metadata
 
-- **Status:** Active — blocked on `single-command-cli` recorded run directories.
+- **Status:** Active — unblocked by `single-command-cli`; next action is to extend the landed recorded run schema with richer provenance.
 - **Owner:** unassigned.
 - **What it covers:** schema-versioned run metadata, git/project snapshot, selected env vars with redaction, foundation import provenance, bundle identity.
 - **Read first:** [`runtime-provenance/design.md`](runtime-provenance/design.md), then [`runtime-provenance/tracker.org`](runtime-provenance/tracker.org).
@@ -65,7 +56,7 @@ The `**Status:**` line at the top of each `design.md` is the canonical status. U
 - **Status:** Active — empirical `uv sync --frozen` check (P3.1) + Gate 10c implementation gap (P4.3).
 - **Owner:** unassigned.
 - **What it covers:** project template, project init behavior, project overlay validation, uv layering validation, and the missing all-project validation gate.
-- **Outstanding:** P3.1, P4.1, P4.2, P4.3, P5.*. `single-command-cli` will supersede the public command surface, so this workstream must be rechecked before continuing implementation.
+- **Outstanding:** P3.1, P4.1, P4.2, P4.3, P5.*. Recheck this workstream against the landed single-command public surface before continuing implementation.
 - **Read first:** [`uv-overlay/design.md`](uv-overlay/design.md), then [`uv-overlay/tracker.org`](uv-overlay/tracker.org).
 - **Depends on:** `spack-envs-bootstrap`, `uv-in-rootfs`.
 
@@ -94,18 +85,23 @@ spack-envs-bootstrap
   `-- thesis-testable
 ```
 
-`single-command-cli` is the next broad product action. Existing `uv-overlay` and `thesis-testable` work remains tracked, but any future task there must account for the new single-command public surface.
+`single-command-cli` is closed. Existing `uv-overlay` and `thesis-testable` work remains tracked, but any future task there must account for the new single-command public surface.
 
 ---
 
 ## Outstanding Code Actions
 
-- **Next product action:** `single-command-cli` P6.2 final acceptance and retrospective.
+- **Next product action:** `bundle-packaging` now that `single-command-cli` has landed the single public command and initial `draccus bundle show` namespace.
 - **Existing validation gap:** `uv-overlay` P4.3, the missing all-project validation gate. Revisit after CLI consolidation starts, because public command names and validation expectations will change.
 
 ---
 
 ## Closed
+
+### `single-command-cli` — one public `draccus` command
+
+- **Status:** Closed (2026-05-21) — `bin/draccus` is the only public entrypoint; legacy `bin/draccus-*` scripts were removed; recorded project `run`, native `shell`, project-bound `uv`/`notebook`, `doctor`, `build`, `project init`, and `bundle show` landed with Gate 0 coverage and docs updates.
+- **Left behind:** Bash dispatcher and focused `lib/draccus-*.sh` command libraries, project/run record helpers, strengthened static validation, updated docs, explicit `DRACCUS_BUNDLE` override behavior, and final Gate 0 artifact at `single-command-cli/artifacts/final-validate-static.log`.
 
 ### `spack-envs-bootstrap` — foundation install
 

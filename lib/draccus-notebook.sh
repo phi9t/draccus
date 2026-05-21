@@ -45,7 +45,7 @@ draccus_notebook_main() {
   draccus_project_apply_bundle_from_config "$config" || return $?
 
   # shellcheck source=draccus-runtime.sh
-  source "$DRACCUS_BUNDLE/lib/draccus-runtime.sh"
+  source "${DRACCUS_CLI_ROOT:-$DRACCUS_BUNDLE}/lib/draccus-runtime.sh"
 
   DRACCUS_WORKSPACE="$project_root" draccus_runtime_exec_run bash -lc '
     set -euo pipefail

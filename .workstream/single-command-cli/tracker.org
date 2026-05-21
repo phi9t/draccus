@@ -377,20 +377,30 @@ Fill before the dependent phase starts.
 *** Artifacts
     - =.workstream/single-command-cli/artifacts/p6.1-validate-static-final.log=
 
-** TODO P6.2 Acceptance run and retrospective
+** DONE P6.2 Acceptance run and retrospective
    :PROPERTIES:
    :ID:       P6.2
-   :OWNER:
-   :STARTED:
-   :FINISHED:
+   :OWNER:   codex
+   :STARTED: 2026-05-21T22:51:26Z
+   :FINISHED: 2026-05-21T22:51:26Z
    :DEPENDS:  P6.1
    :END:
    DoD: representative commands exercised, Gate 0 passes, tracker complete, retrospective filled.
 
+*** Log
+    - Verified command help: =./bin/draccus --help=, =./bin/draccus help shell=, and =./bin/draccus help run= all exited 0.
+    - Verified =./bin/draccus bundle show= exits 0 and reports the linked-worktree bundle plus the default =~/.automata/draccus/bundles/default= path.
+    - Verified =./bin/draccus doctor --json= exits 0 with ={"ok":true,...}= using the populated main checkout =rootfs/= and =state/= overrides required by this linked worktree.
+    - Verified final project smoke: =draccus project init final-smoke=, then =draccus run --name smoke -- python -c 'print("ok")'= from that project wrote =run.json= and =logs/stdout.log= containing =ok=.
+    - Saved final Gate 0 output to =.workstream/single-command-cli/artifacts/final-validate-static.log=; result: =124 passed, 0 failed=.
+    - Final whole-branch review follow-up 2026-05-21T23:00:32Z: restored explicit =DRACCUS_BUNDLE= override behavior while loading CLI libraries from the dispatcher checkout, corrected AGENTS venv guidance away from host =$(which python)= expansion, removed premature =draccus bundle unpack= doctor guidance, and cleaned trailing whitespace from the final Gate 0 artifact.
+
+*** Artifacts
+    - =.workstream/single-command-cli/artifacts/final-validate-static.log=
+
 * Retrospective
-(fill at end)
-- Surprises:
-- Automate next time:
-- Doc gaps:
+- Surprises: The largest implementation risk was not the dispatcher itself; it was the migration tail. Stale active references appeared in shims, =mise.toml=, pre-commit globs, project template dotfiles, and the implementation plan, and =draccus run= needed atomic run-directory allocation for same-second parallel runs. Final review also exposed that the CLI needs separate concepts for the dispatcher code root and the selected =DRACCUS_BUNDLE=.
+- Automate next time: Keep the Gate 0 stale-reference scan and parallel same-name run regression. The workstream also showed that linked worktrees need explicit rootfs/state overrides unless generated bundle state is externalized or symlinked consistently.
+- Doc gaps: The docs needed sharper distinctions between native =draccus shell= and project-bound recorded =draccus run=, plus explicit wording that plain =uv= only has resolver overrides while =draccus uv= remains the protected package-management entrypoint.
 
 * Notes
