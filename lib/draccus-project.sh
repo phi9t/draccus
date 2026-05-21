@@ -39,6 +39,132 @@ draccus_project_assert_inside() {
   fi
 }
 
+# Echo the nearest draccus.yaml discovered by walking upward from $PWD.
+draccus_project_config_path() {
+  local dir parent
+  dir="$PWD"
+
+  while :; do
+    if [[ -f "$dir/draccus.yaml" ]]; then
+      echo "$dir/draccus.yaml"
+      return 0
+    fi
+    [[ "$dir" == "/" ]] && break
+    parent="$(dirname "$dir")"
+    [[ "$parent" == "$dir" ]] && break
+    dir="$parent"
+  done
+
+  return 1
+}
+
+# Echo the directory that contains the active draccus.yaml.
+draccus_project_root_from_config() {
+  local config="${1:-}"
+  if [[ -z "$config" ]]; then
+    config="$(draccus_project_config_path)" || return 1
+  fi
+
+  dirname "$config"
+}
+
+# Parse a simple top-level "key: value" pair from a first-schema draccus.yaml.
+draccus_yaml_value() {
+  if [[ $# -ne 2 ]]; then
+    echo "draccus_yaml_value: expected KEY FILE" >&2
+    return 2
+  fi
+
+  local key="$1"
+  local file="$2"
+
+  awk -v key="$key" '
+    function trim(value) {
+      sub(/^[[:space:]]+/, "", value)
+      sub(/[[:space:]]+$/, "", value)
+      return value
+    }
+
+    function strip_comment(value,    i, char, prev, in_single, in_double) {
+      for (i = 1; i <= length(value); i++) {
+        char = substr(value, i, 1)
+        prev = i > 1 ? substr(value, i - 1, 1) : ""
+
+        if (char == "\"" && !in_single && prev != "\\") {
+          in_double = !in_double
+        } else if (char == "'\''" && !in_double) {
+          in_single = !in_single
+        } else if (char == "#" && !in_single && !in_double && (i == 1 || prev ~ /[[:space:]]/)) {
+          return substr(value, 1, i - 1)
+        }
+      }
+      return value
+    }
+
+    $0 ~ ("^" key "[[:space:]]*:") {
+      value = $0
+      sub("^" key "[[:space:]]*:[[:space:]]*", "", value)
+      value = strip_comment(value)
+      value = trim(value)
+      if (value ~ /^".*"$/ || value ~ /^'\''.*'\''$/) {
+        value = substr(value, 2, length(value) - 2)
+      }
+      print value
+      found = 1
+      exit
+    }
+
+    END {
+      if (!found) {
+        exit 1
+      }
+    }
+  ' "$file"
+}
+
+draccus_project_name_from_config() {
+  local config="${1:-}"
+  local name
+  if [[ -z "$config" ]]; then
+    config="$(draccus_project_config_path)" || return 1
+  fi
+
+  name="$(draccus_yaml_value name "$config")" || return 1
+  [[ -n "$name" ]] || return 1
+  echo "$name"
+}
+
+draccus_project_bundle_from_config() {
+  local config="${1:-}"
+  local bundle
+  if [[ -z "$config" ]]; then
+    config="$(draccus_project_config_path)" || return 1
+  fi
+
+  bundle="$(draccus_yaml_value bundle "$config")" || return 1
+  [[ -n "$bundle" ]] || return 1
+  echo "$bundle"
+}
+
+draccus_project_runs_dir_from_config() {
+  local config="${1:-}"
+  local runs_dir
+  if [[ -z "$config" ]]; then
+    config="$(draccus_project_config_path)" || return 1
+  fi
+
+  runs_dir="$(draccus_yaml_value runs_dir "$config")" || return 1
+  [[ -n "$runs_dir" ]] || return 1
+  echo "$runs_dir"
+}
+
+draccus_project_assert_config() {
+  if ! draccus_project_config_path >/dev/null 2>&1; then
+    echo "draccus: error: no draccus.yaml found. Run: draccus project init <name>" >&2
+    exit 1
+  fi
+}
+
 # Echo the canonical uv venv creation arguments.
 # This is THE source-of-truth invocation; callers eval inside bwrap where
 # $(which python) resolves to the Spack base-ml Python.

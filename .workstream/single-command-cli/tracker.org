@@ -130,15 +130,28 @@ Fill before the dependent phase starts.
     - =.workstream/single-command-cli/artifacts/p1.2-green-validate-static.log=
 
 * Phase 2 — Project config and init :phase2:
-** TODO P2.1 Implement =draccus.yaml= discovery and validation
+** DONE P2.1 Implement =draccus.yaml= discovery and validation
    :PROPERTIES:
    :ID:       P2.1
-   :OWNER:
-   :STARTED:
-   :FINISHED:
+   :OWNER:   codex-implementer
+   :STARTED: 2026-05-21T19:58:13Z
+   :FINISHED: 2026-05-21T20:01:10Z
    :DEPENDS:  P1.2
    :END:
    DoD: project-required commands fail clearly without =draccus.yaml=; optional bundle override resolves; Gate 0 passes.
+
+*** Log
+    - Red check: =env -u DRACCUS_BUNDLE DRACCUS_ROOTFS=/data02/home/philip.yang/draccus/rootfs ./scripts/validate-static.sh= failed as expected because =lib/draccus-layout.sh= and the =draccus.yaml= helper functions were absent.
+    - Added =lib/draccus-layout.sh= with shared host layout, slug, path hash, and UTC timestamp helpers.
+    - Extended =lib/draccus-project.sh= with simple schema-v1 =draccus.yaml= discovery and top-level key parsing helpers while preserving the existing =draccus_project_root= / =.venv= helpers.
+    - Added =lib/draccus-layout.sh= and project config helper assertions to =scripts/validate-static.sh=.
+    - Verified =bash -n lib/draccus-layout.sh lib/draccus-project.sh=.
+    - Verified focused shell checks for config discovery, quoted YAML values, missing optional keys, empty required =name=, shared roots, slug normalization, hash length, and timestamp helper.
+    - Verified =env -u DRACCUS_BUNDLE DRACCUS_ROOTFS=/data02/home/philip.yang/draccus/rootfs ./scripts/validate-static.sh=.
+
+*** Artifacts
+    - =.workstream/single-command-cli/artifacts/p2.1-red-validate-static-worktree.log=
+    - =.workstream/single-command-cli/artifacts/p2.1-final-validate-static.log=
 
 ** TODO P2.2 Implement =draccus project init=
    :PROPERTIES:
