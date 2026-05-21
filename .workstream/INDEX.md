@@ -19,7 +19,7 @@ The `**Status:**` line at the top of each `design.md` is the canonical status. U
 
 ### `single-command-cli` — one public `draccus` command
 
-- **Status:** Active — Phase 5 legacy-entrypoint removal is done; next implementation action is Phase 6 documentation and acceptance.
+- **Status:** Active — Phase 6 documentation is done; next implementation action is final acceptance P6.2.
 - **Owner:** unassigned.
 - **What it covers:** breaking CLI consolidation around `bin/draccus`; recorded `run`; native `shell`; project-bound `uv` and `notebook`; `doctor`; `build`; `project init`; initial `bundle show`; removal of legacy public entrypoints; Gate 0 and docs updates.
 - **Read first:** [`single-command-cli/design.md`](single-command-cli/design.md), then [`single-command-cli/tracker.org`](single-command-cli/tracker.org) `* Decisions` and P6.
@@ -100,7 +100,7 @@ spack-envs-bootstrap
 
 ## Outstanding Code Actions
 
-- **Next product action:** `single-command-cli` P6 documentation and acceptance.
+- **Next product action:** `single-command-cli` P6.2 final acceptance and retrospective.
 - **Existing validation gap:** `uv-overlay` P4.3, the missing all-project validation gate. Revisit after CLI consolidation starts, because public command names and validation expectations will change.
 
 ---

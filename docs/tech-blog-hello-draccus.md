@@ -50,9 +50,9 @@ flowchart LR
 
 | Tool | What it does |
 |------|-------------|
-| `./bin/draccus shell` | Interactive ML sandbox -- `python` is torch/jax-ready |
-| `./bin/draccus run -- <cmd>` | Run any command in the sandbox (training, inference, CI) |
-| `./bin/draccus uv <args>` | Add/manage fast-moving Python packages on top of the foundation |
+| `draccus shell` | Interactive ML sandbox -- `python` is torch/jax-ready |
+| `draccus run -- <cmd>` | Run and record a project command |
+| `draccus uv <args>` | Add/manage fast-moving Python packages on top of the foundation |
 
 For building/updating the foundation itself, use `draccus build` (writable Spack).
 
@@ -67,13 +67,15 @@ Authoritative lists and checks live in **`scripts/validate_uv_layering.sh`** and
 
 ## Your first interactive shell
 
-From the **bundle root** (the directory that contains `bin/` and `lib/`):
+These examples assume `draccus` is on `PATH`. If you are running directly from a repository checkout before installation, use `./bin/draccus ...`.
+
+From any directory:
 
 ```bash
-./bin/draccus shell
+draccus shell
 ```
 
-That drops you into `bash` **inside** the namespace with **`/opt/draccus`** and **`/workspace`** set up. Quick sanity:
+That drops you into controlled `zsh` **inside** the namespace with **`/opt/draccus`** and **`/workspace`** set up. Quick sanity:
 
 ```bash
 which python
@@ -89,15 +91,17 @@ You should see Python from **`/opt/draccus/view/base-ml/bin/python`** and CUDA a
 Non-interactive pattern (good for scripts):
 
 ```bash
-DRACCUS_BUNDLE="$(pwd)" ./bin/draccus run -- bash -lc 'python -c "import torch; print(torch.cuda.device_count())"'
+draccus project init tour --path ./tour
+cd ./tour
+draccus run --name gpu-count -- python -c "import torch; print(torch.cuda.device_count())"
 ```
 
-Override **`DRACCUS_BUNDLE`** if your checkout is not auto-detected. The **`bash -lc`** form matches what validation scripts and CI use.
+`draccus run` is project-bound: it requires `draccus.yaml`, streams stdout/stderr live, writes a run directory by default, and exits with the child command's exit code.
 
 **Offline / air-gap style** (no network inside the namespace):
 
 ```bash
-DRACCUS_OFFLINE=1 ./bin/draccus run -- bash -lc 'python -c "import torch"'
+DRACCUS_OFFLINE=1 draccus run -- python -c "import torch"
 ```
 
 ---
@@ -106,16 +110,14 @@ DRACCUS_OFFLINE=1 ./bin/draccus run -- bash -lc 'python -c "import torch"'
 
 **Goal:** a `.venv` that installs Hugging Face stacks (and similar) **without** installing `torch`/`jax`/`numpy` from PyPI.
 
-From the bundle root, use **`./bin/draccus uv`** (the canonical uv entrypoint with layering protection):
+From a Draccus project, use **`draccus uv`** (the canonical uv entrypoint with layering protection):
 
 ```bash
-# Create a venv that inherits the foundation
-./bin/draccus uv venv --python "$(which python)" --system-site-packages .venv
+draccus project init hf-scratch --path ./hf-scratch
+cd ./hf-scratch
 
-# Inside ./bin/draccus shell or ./bin/draccus run:
-source .venv/bin/activate
-./bin/draccus uv pip install transformers datasets accelerate
-python -c "import torch, transformers; print(torch.__file__)"
+draccus uv pip install transformers datasets accelerate
+draccus run --name import-check -- python -c "import torch, transformers; print(torch.__file__)"
 ```
 
 The last line should show **`torch` loading from** **`/opt/draccus/view/base-ml/...`**, not from `.venv`.
@@ -149,10 +151,11 @@ Targeted checks:
 Offline import probe (must not hit the network):
 
 ```bash
-DRACCUS_OFFLINE=1 ./bin/draccus run -- bash -lc 'python /workspace/scripts/validate_foundation.py'
+cd /path/to/a/draccus-project
+DRACCUS_OFFLINE=1 draccus run -- python -c "import torch, jax, numpy, scipy"
 ```
 
-`PATH` already points at the ML view by default -- no `spack env activate` needed inside `draccus run`.
+`draccus run` is project-bound, so the offline probe must be launched from a project root or descendant where `draccus.yaml` is discoverable. `PATH` already points at the ML view by default -- no `spack env activate` needed inside `draccus run`.
 
 ---
 

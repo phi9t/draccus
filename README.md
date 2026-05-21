@@ -11,7 +11,7 @@ Draccus layers a pinned, hermetic ML environment **on top of any base image** us
 ## Try it
 
 ```bash
-./bin/draccus shell
+draccus shell
 ```
 
 ```python
@@ -28,36 +28,51 @@ That's it. `python` is the foundation ML interpreter with torch, jax, numpy, sci
 - **Dependencies are sacred artifacts.** The ML foundation (torch, jax, CUDA, numpy, scipy) is audited and pinned with the same rigor as your datasets and model checkpoints. It does not drift, and nothing in your project can accidentally shadow it.
 - **Dev-prod parity.** `draccus shell` on your devbox and `draccus run` on 1000 nodes use the same sandbox, the same paths, the same libraries. If it works locally, it works at scale.
 
-## Three tools you use every day
+## Quickstart
 
-| Tool | What it does |
-|------|-------------|
-| `./bin/draccus shell` | Interactive ML sandbox -- `python` is torch/jax-ready out of the box |
-| `./bin/draccus run -- <cmd>` | Run any command inside the sandbox (training scripts, inference, CI) |
-| `./bin/draccus uv <uv-args>` | Add and manage fast-moving Python packages on top of the foundation |
+`draccus` is the only public command. If you are working directly from a repo checkout before installation, use `./bin/draccus ...`; otherwise the examples assume `draccus` is on `PATH`.
+
+| Command | Purpose |
+|---|---|
+| `draccus shell` | Open the native interactive ML shell |
+| `draccus run -- <cmd>` | Run and record a project command |
+| `draccus uv ...` | Manage project Python dependencies safely |
+| `draccus doctor` | Check bundle, namespace, GPU, and foundation health |
+| `draccus notebook` | Launch project JupyterLab |
+| `draccus build -- <cmd>` | Writable foundation maintenance |
+| `draccus project init <name>` | Create/initialize a model project |
+| `draccus bundle show` | Show selected/default bundle |
 
 `pip` is intentionally not listed: bare `pip` / `pip3` are shimmed to fail fast inside the sandbox; use `draccus uv pip …` instead.
 
-## Adding packages with `draccus uv`
+Typical project flow:
 
-The foundation (torch, jax, CUDA, numpy, scipy) is built by Spack and lives in the read-only base-ml view. Everything else -- transformers, datasets, accelerate, flash-attn, vllm, your experiment code -- lives in a per-project uv virtualenv layered on top.
+```bash
+draccus project init my-experiment --path ./my-experiment
+cd ./my-experiment
+draccus uv pip install transformers datasets accelerate
+draccus run --name smoke -- python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
+draccus notebook
+```
+
+## Adding Packages
+
+The foundation (torch, jax, CUDA, numpy, scipy) is built by Spack and lives in the read-only base-ml view. Everything else -- transformers, datasets, accelerate, flash-attn, vllm, your experiment code -- lives in a per-project uv virtualenv layered on top. `draccus uv` requires a project with `draccus.yaml`; `draccus project init <name>` creates that project contract, a generic `pyproject.toml`, `.venv`, `uv.lock`, and disabled pip stubs.
 
 ### Create a project environment
 
 ```bash
-cd /workspace/my-experiment
-
-# Create a venv that inherits the foundation via --system-site-packages
-./bin/draccus uv venv --python "$(which python)" --system-site-packages .venv
-source .venv/bin/activate
+# Create the Draccus project contract and canonical venv at a host path
+draccus project init my-experiment --path ./my-experiment
+cd ./my-experiment
 
 # Install fast-moving packages
-./bin/draccus uv pip install transformers datasets accelerate peft trl safetensors
+draccus uv pip install transformers datasets accelerate peft trl safetensors
 ```
 
 If `.venv` does not exist yet, `draccus uv pip install ...` creates it with the canonical `--system-site-packages` layout before installing. It never installs project packages into the read-only foundation view.
 
-Inside `draccus shell` or `draccus run`, the `draccus uv` wrapper is available as plain `uv` with all protections active. `draccus shell` starts a controlled zsh session, sources Spack's shell setup, activates the read-only `base-ml` environment by default, activates the workspace `.venv` when it exists, and uses Starship to show the active Spack and uv environments in the prompt.
+Inside `draccus shell` or `draccus run`, plain `uv` still sees `UV_EXTRA_OVERRIDES`, so the resolver is constrained against foundation packages. Use `draccus uv` for direct package operations: it adds project targeting, install-plan auditing, direct requirement blocking, and pip neutralization around the underlying uv command. `draccus shell` starts a controlled zsh session, sources Spack's shell setup, activates the read-only `base-ml` environment by default, activates the workspace `.venv` when it exists, and uses Starship to show the active Spack and uv environments in the prompt.
 
 ### The do-not-shadow rule
 
@@ -103,30 +118,34 @@ flowchart TD
 
 **bwrap** (bubblewrap) creates a filesystem namespace: it remaps your bundle directory to `/opt/draccus` and overlays a pinned rootfs as `/`, all in userland. No root, no daemon, works inside containers you don't control. GPU devices and NVIDIA driver libraries are passed through from the host.
 
-**Spack** builds the heavy, ABI-coupled ML foundation inside the sandbox: CUDA, cuDNN, NCCL, MKL, FFmpeg, torch, jax, numpy, scipy -- compiled into a unified dependency graph targeting your hardware. The result is a flat "view" directory at `/opt/draccus/view/base-ml` that looks like `/usr/local` to consumers. Spack is mounted **read-only** in `draccus run` -- the foundation is immutable at runtime.
+**Spack** builds the heavy, ABI-coupled ML foundation inside the sandbox: CUDA, cuDNN, NCCL, MKL, FFmpeg, torch, jax, numpy, scipy -- compiled into a unified dependency graph targeting your hardware. The result is a flat "view" directory at `/opt/draccus/view/base-ml` that looks like `/usr/local` to consumers. Spack is mounted **read-only** in `draccus shell` and `draccus run` -- the foundation is immutable at runtime.
 
 **uv** manages fast-moving, project-specific packages in per-project `.venv` directories. `--system-site-packages` lets the venv see the Spack foundation without copying it. `UV_EXTRA_OVERRIDES` prevents uv from ever installing foundation packages from PyPI. This is what keeps the two layers cleanly separated.
 
-### The two launchers
+### Runtime and Build Modes
 
-| Launcher | Spack tree | Use for |
+| Command | Spack tree | Use for |
 |----------|-----------|---------|
-| `draccus run` | Read-only | Daily work: training, inference, validation |
+| `draccus shell` | Read-only | Native interactive ML shell; works outside projects; unrecorded |
+| `draccus run` | Read-only | Project commands with recorded stdout/stderr and exit code |
 | `draccus build` | Read-write | Building/updating Spack environments |
 
-`./bin/draccus shell` is a native interactive-only command, not a recorded `draccus run`: it works outside projects and enters the shared run-mode namespace/runtime with an ML-first `PATH`. `DRACCUS_PREFER_SYS_PATH=1 ./bin/draccus shell` uses the same interactive sandbox with base-sys before base-ml on `PATH` (for infra/toolchain work).
+`draccus shell` is a native interactive-only command, not a recorded `draccus run`: it works outside projects and enters the shared run-mode namespace/runtime with an ML-first `PATH`. `DRACCUS_PREFER_SYS_PATH=1 draccus shell` uses the same interactive sandbox with base-sys before base-ml on `PATH` (for infra/toolchain work).
 
 ## Commands reference
 
 | Command | Purpose |
 |---------|---------|
-| `./bin/draccus shell` | Interactive ML sandbox |
-| `./bin/draccus run -- <cmd>` | Run a command in the sandbox (read-only foundation) |
-| `./bin/draccus uv <args>` | uv with layering protection (preferred way to manage packages) |
-| `./bin/draccus build -- <cmd>` | Run a command with writable Spack (for building/updating foundation) |
-| `DRACCUS_OFFLINE=1 ./bin/draccus run -- <cmd>` | Same as run, but with no network (`--unshare-net`) |
-| `DRACCUS_PREFER_SYS_PATH=1 ./bin/draccus shell` | Interactive shell with base-sys before base-ml on `PATH` |
-| `./bin/draccus doctor` | Quick sanity check of namespace + paths |
+| `draccus shell [--bundle PATH]` | Open the controlled zsh ML shell |
+| `draccus run [--name NAME] [--no-record] [--runs-dir DIR] -- <cmd>` | Run a project command, stream output, and record operational logs by default |
+| `draccus uv <args>` | uv with project and layering protection |
+| `draccus project init <name> [--path PATH]` | Create/initialize `draccus.yaml`, `pyproject.toml`, `.venv`, `uv.lock`, and pip shims |
+| `draccus notebook [--port PORT] [--host HOST]` | Launch project JupyterLab; install it with `draccus uv pip install jupyterlab` if missing |
+| `draccus doctor [--json]` | Check bundle/rootfs, namespace paths, GPU visibility, pip/uv shims, and foundation package provenance |
+| `draccus build -- <cmd>` | Run a mutating command with writable Spack state |
+| `draccus bundle show [--json]` | Show the selected/default bundle path |
+| `DRACCUS_OFFLINE=1 draccus run -- <cmd>` | Same as run, but with no network (`--unshare-net`) |
+| `DRACCUS_PREFER_SYS_PATH=1 draccus shell` | Interactive shell with base-sys before base-ml on `PATH` |
 | `scripts/validate-static.sh` | Gate 0: static checks, no GPU needed |
 | `scripts/validate-all.sh` | Full 14-gate validation (GPU required) |
 
@@ -151,7 +170,7 @@ DRACCUS_BUNDLE="$PWD" ./scripts/bootstrap-rootfs.sh
 
 ```bash
 # Clone Spack (inside the writable sandbox)
-./bin/draccus build -- bash -lc '
+draccus build -- bash -lc '
   git clone https://github.com/spack/spack /opt/draccus/spack
   . /opt/draccus/spack/share/spack/setup-env.sh
   spack mirror add spack-public https://mirror.spack.io || true
@@ -159,7 +178,7 @@ DRACCUS_BUNDLE="$PWD" ./scripts/bootstrap-rootfs.sh
 '
 
 # Build base-sys (toolchain, no CUDA)
-./bin/draccus build -- bash -lc '
+draccus build -- bash -lc '
   . /opt/draccus/spack/share/spack/setup-env.sh
   spack env create base-sys envs/base-sys/spack.yaml
   spack -e base-sys concretize -f
@@ -167,7 +186,7 @@ DRACCUS_BUNDLE="$PWD" ./scripts/bootstrap-rootfs.sh
 '
 
 # Build base-ml (CUDA, PyTorch, JAX, FFmpeg, etc.)
-./bin/draccus build -- bash -lc '
+draccus build -- bash -lc '
   . /opt/draccus/spack/share/spack/setup-env.sh
   spack env create base-ml envs/base-ml/spack.yaml
   spack -e base-ml concretize -f
@@ -178,7 +197,7 @@ DRACCUS_BUNDLE="$PWD" ./scripts/bootstrap-rootfs.sh
 ### 3. Validate
 
 ```bash
-./bin/draccus doctor
+draccus doctor
 ./scripts/validate-base-sys.sh
 ./scripts/validate-base-ml.sh
 ```
@@ -187,9 +206,9 @@ DRACCUS_BUNDLE="$PWD" ./scripts/bootstrap-rootfs.sh
 
 ```
 $DRACCUS_BUNDLE/
-├── bin/                 # draccus run, draccus build, draccus shell, draccus uv, draccus doctor, ...
+├── bin/                 # single public draccus command
 ├── shims/               # pip/pip3 shims mounted at /opt/draccus/shims inside the namespace
-├── lib/                 # draccus-env.sh (portable bundle resolver), bwrap helpers
+├── lib/                 # runtime, shell, project, uv, doctor, notebook, and bwrap helpers
 ├── rootfs/              # pinned root filesystem (from Docker export)
 ├── state/
 │   ├── spack/           # Spack installation + environments
@@ -233,7 +252,13 @@ sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0
 Draccus passes through GPU devices from the host. Ensure `/dev/nvidia*` and NVIDIA driver libraries are visible on the outer host/container.
 
 ```bash
-./bin/draccus run -- bash -lc 'nvidia-smi || true; python -c "import torch; print(torch.cuda.is_available())"'
+draccus doctor
+```
+
+For a project command check, run from a directory containing `draccus.yaml`:
+
+```bash
+draccus run -- python -c "import torch; print(torch.cuda.is_available())"
 ```
 
 **Rootfs missing or incomplete**

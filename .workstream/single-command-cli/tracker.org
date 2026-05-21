@@ -356,15 +356,26 @@ Fill before the dependent phase starts.
     - =.workstream/single-command-cli/artifacts/p5.1-p5.2-validate-static.log=
 
 * Phase 6 — Docs and acceptance :phase6:
-** TODO P6.1 Rewrite README and DESIGN around =draccus=
+** DONE P6.1 Rewrite README and DESIGN around =draccus=
    :PROPERTIES:
    :ID:       P6.1
-   :OWNER:
-   :STARTED:
-   :FINISHED:
+   :OWNER:   codex-implementer-task9
+   :STARTED: 2026-05-21T22:32:37Z
+   :FINISHED: 2026-05-21T22:37:09Z
    :DEPENDS:  P5.2
    :END:
    DoD: user-facing docs describe only the new command surface and explain shell/run/uv/project/notebook/build/doctor.
+
+*** Log
+    - Updated README quickstart and command reference around the single public =draccus= surface.
+    - Updated DESIGN to describe =bin/draccus= as the only public entrypoint and to map runtime/build, shell, project/uv, run recording, doctor, and notebook behavior to focused =lib/draccus-*.sh= files.
+    - Updated the tech blog and project template examples to use user-facing =draccus ...= commands, with =./bin/draccus= mentioned only as repo-checkout execution guidance.
+    - Updated the training substrate roadmap to record that the single-command CLI implementation exists and legacy =draccus-*= public scripts were removed rather than shimmed.
+    - Verified no stale active public command references and ran Gate 0 with =PATH="$HOME/.local/bin:$PATH" env -u DRACCUS_BUNDLE DRACCUS_ROOTFS=/data02/home/philip.yang/draccus/rootfs ./scripts/validate-static.sh=; result: =123 passed, 0 failed=.
+    - Task 9 docs-quality follow-up 2026-05-21: clarified project-bound =draccus run= examples, routed generic GPU troubleshooting to =draccus doctor=, removed host =$(which python)= expansion from the DESIGN venv example, and narrowed plain =uv= protection wording.
+
+*** Artifacts
+    - =.workstream/single-command-cli/artifacts/p6.1-validate-static-final.log=
 
 ** TODO P6.2 Acceptance run and retrospective
    :PROPERTIES:

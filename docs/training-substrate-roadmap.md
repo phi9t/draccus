@@ -8,7 +8,7 @@ Draccus should evolve from an environment substrate into an experiment substrate
 2. **Bundle distribution second.** Package and install the already-built shared foundation bundle cleanly under `~/.automata/draccus`.
 3. **Experiment correctness third.** Add provenance, replay, resume checks, data/artifact locking, and failure classification after the UX and bundle model are stable.
 
-The first implementation milestone is intentionally breaking: `draccus` becomes the only public command. Future-facing docs should describe only `draccus <subcommand>`.
+The first implementation milestone is intentionally breaking: `draccus` becomes the only public command. The single-command CLI workstream has implemented that surface and removed the legacy `draccus-*` public scripts rather than shimming them. Future-facing docs should describe only `draccus <subcommand>`.
 
 ## 1. Product Contract
 
@@ -138,14 +138,14 @@ Path: `.workstream/single-command-cli/`
 
 Goal: land the breaking CLI consolidation and recorded operational run behavior.
 
-Scope:
+Implementation status:
 
-- Add `bin/draccus` as a Bash-first thin dispatcher.
-- Move reusable behavior into `lib/` so a future Rust CLI can replace the router.
-- Remove legacy per-command entrypoints rather than shimming them.
-- Implement shell/run/uv/doctor/notebook/build/project-init/bundle-show.
-- Update Gate 0 and pre-commit expectations to enforce the single public surface.
-- Rewrite README and DESIGN around the new CLI.
+- Implemented `bin/draccus` as a Bash-first thin dispatcher.
+- Moved reusable behavior into `lib/` so a future Rust CLI can replace the router.
+- Removed legacy per-command entrypoints rather than shimming them; old `draccus-*` scripts are not supported public commands.
+- Implemented shell/run/uv/doctor/notebook/build/project-init/bundle-show.
+- Updated Gate 0 and pre-commit expectations to enforce the single public surface.
+- Final documentation and acceptance are being completed in Phase 6.
 
 Acceptance:
 

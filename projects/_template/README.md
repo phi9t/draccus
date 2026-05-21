@@ -2,6 +2,9 @@
 
 ## Quickstart
 
+Run these from this project root, after `draccus project init` has created
+`draccus.yaml`, `.venv`, and `uv.lock`.
+
 ```bash
 draccus uv sync --frozen
 draccus run --name foundation-smoke -- python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
@@ -13,6 +16,13 @@ draccus shell
 ```bash
 draccus uv pip install transformers accelerate
 draccus uv sync
+```
+
+For notebooks:
+
+```bash
+draccus uv pip install jupyterlab
+draccus notebook
 ```
 
 ## Foundation packages
