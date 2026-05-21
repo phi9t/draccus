@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the legacy public `bin/draccus-*` surface with one polished `bin/draccus` command, including recorded project runs and full validation/docs updates.
+**Goal:** Replace the legacy per-command public surface with one polished `bin/draccus` command, including recorded project runs and full validation/docs updates.
 
 **Architecture:** Keep the first CLI Bash-based. `bin/draccus` is a thin dispatcher; reusable runtime, project, uv, doctor, shell, and run-record logic lives in focused `lib/draccus-*.sh` files so a future Rust CLI can replace only the router. Preserve the existing runtime namespace contract by mechanically moving current launcher behavior into library functions before deleting old entrypoints.
 
@@ -17,10 +17,10 @@ Create or modify these files:
 - Create `bin/draccus`: single public CLI dispatcher.
 - Create `lib/draccus-cli.sh`: help, dispatch, common error/usage helpers.
 - Create `lib/draccus-layout.sh`: `~/.automata/draccus` layout, default bundle resolution, project id/run id helpers.
-- Create `lib/draccus-runtime.sh`: runtime/build namespace entry functions extracted from current `bin/draccus-run` and `bin/draccus-build`.
+- Create `lib/draccus-runtime.sh`: runtime/build namespace entry functions shared by `draccus run` and `draccus build`.
 - Create `lib/draccus-shell.sh`: current zsh/starship shell behavior as a function.
 - Modify `lib/draccus-project.sh`: current project helpers plus `draccus.yaml` discovery/schema helpers.
-- Modify `lib/draccus-uv.sh`: use `draccus runtime` library instead of the old public `bin/draccus-run` command.
+- Modify `lib/draccus-uv.sh`: use the runtime library instead of a removed legacy public launcher.
 - Create `lib/draccus-run-record.sh`: operational run directory creation and live tee logging.
 - Create `lib/draccus-doctor.sh`: user-facing health checks and `--json`.
 - Create `lib/draccus-notebook.sh`: project-bound Jupyter launch wrapper.
@@ -30,9 +30,9 @@ Create or modify these files:
 - Create `projects/_template/draccus.yaml`: template project metadata.
 - Modify `README.md`, `DESIGN.md`, `docs/training-substrate-roadmap.md`, `docs/tech-blog-hello-draccus.md`: new command surface only.
 - Modify `.workstream/single-command-cli/tracker.org`: claim and complete tasks as implementation proceeds.
-- Remove `bin/draccus-run`, `bin/draccus-build`, `bin/draccus-shell`, `bin/draccus-uv`, `bin/draccus-probe`, `bin/draccus-project-init`, `bin/draccus-debug-shell`, `bin/draccus-offline` in the final migration task.
+- Remove the legacy public files for run, build, shell, uv, probe, project init, debug shell, and offline behavior in the final migration task. Task 8 completed that removal; do not recreate shims.
 
-Do not touch `envs/*/spack.yaml`, `scripts/validate_uv_layering.sh` `DO_NOT_SHADOW`, pinned CUDA/Torch/JAX versions, or `mise.toml`.
+Do not touch `envs/*/spack.yaml`, `scripts/validate_uv_layering.sh` `DO_NOT_SHADOW`, or pinned CUDA/Torch/JAX versions.
 
 ---
 
@@ -53,7 +53,7 @@ Run:
 ```bash
 find bin -maxdepth 1 -type f -printf '%f\n' | sort \
   | tee .workstream/single-command-cli/artifacts/p0.1-bin-before.txt
-rg -n "draccus-(run|shell|uv|probe|project-init|build|offline|debug-shell)" README.md DESIGN.md docs scripts projects .workstream \
+rg -n "legacy public Draccus command names" README.md DESIGN.md docs scripts projects .workstream \
   | tee .workstream/single-command-cli/artifacts/p0.1-legacy-refs-before.txt
 ./scripts/validate-static.sh 2>&1 \
   | tee .workstream/single-command-cli/artifacts/p0.1-validate-static-before.log
@@ -329,8 +329,7 @@ git commit -m "Add draccus command dispatcher"
 
 **Files:**
 - Create: `lib/draccus-runtime.sh`
-- Modify: `bin/draccus-run`
-- Modify: `bin/draccus-build`
+- Modify: `bin/draccus`
 - Modify: `lib/draccus-cli.sh`
 - Modify: `scripts/validate-static.sh`
 
@@ -363,15 +362,15 @@ draccus_runtime_exec() {
     *) echo "draccus-runtime: invalid mode '$mode'" >&2; return 2 ;;
   esac
 
-  # Move the current bwrap setup from bin/draccus-run and bin/draccus-build into
+  # Move the run/build bwrap setup into
   # this function. Keep the run/build branch limited to bind mode and env/PATH
   # differences. Preserve all existing mount paths and env vars.
   #
   # Implementation rule:
   # - run mode must keep state/spack, state/view, envs, shims, and host-bin
-  #   read-only exactly as current bin/draccus-run does.
+  #   read-only exactly as the run-mode contract requires.
   # - build mode must keep state/spack, state/view, envs writable exactly as
-  #   current bin/draccus-build does.
+  #   the build-mode contract requires.
   # - both modes must preserve DRACCUS_WORKSPACE defaulting to $PWD.
   :
 }
@@ -379,7 +378,7 @@ draccus_runtime_exec() {
 
 - [ ] **Step 3: Mechanically move existing launcher bodies into the function**
 
-Edit `lib/draccus-runtime.sh` by moving the current bodies of `bin/draccus-run` and `bin/draccus-build` into `draccus_runtime_exec`.
+Edit `lib/draccus-runtime.sh` by moving the run/build namespace bodies into `draccus_runtime_exec`.
 
 Use these concrete branch points:
 
@@ -414,37 +413,14 @@ draccus_foundation_bind_args=(
 )
 ```
 
-Keep `uv_overrides_args` only in run mode, matching the existing `bin/draccus-run`.
+Keep `uv_overrides_args` only in run mode.
 
-- [ ] **Step 4: Convert old launchers to temporary private wrappers**
+- [ ] **Step 4: Route through the single dispatcher**
 
-Replace `bin/draccus-run` with:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-# shellcheck source=../lib/draccus-env.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/draccus-env.sh"
-# shellcheck source=../lib/draccus-runtime.sh
-source "$DRACCUS_BUNDLE/lib/draccus-runtime.sh"
-
-draccus_runtime_exec_run "$@"
-```
-
-Replace `bin/draccus-build` with:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-# shellcheck source=../lib/draccus-env.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/draccus-env.sh"
-# shellcheck source=../lib/draccus-runtime.sh
-source "$DRACCUS_BUNDLE/lib/draccus-runtime.sh"
-
-draccus_runtime_exec_build "$@"
-```
+Wire `bin/draccus` to call `draccus_runtime_exec_run` for `draccus run` and
+`draccus_runtime_exec_build` for `draccus build`. Earlier implementation notes
+used temporary compatibility wrappers during migration; Task 8 removed those
+files. Do not recreate them.
 
 - [ ] **Step 5: Add `draccus build` dispatch**
 
@@ -461,13 +437,13 @@ build)
   ;;
 ```
 
-- [ ] **Step 6: Verify old wrappers and new build command**
+- [ ] **Step 6: Verify run and build subcommands**
 
 Run:
 
 ```bash
-./bin/draccus-run bash -lc 'test "$DRACCUS_PREFIX" = /opt/draccus'
-./bin/draccus-build bash -lc 'test "$DRACCUS_PREFIX" = /opt/draccus'
+./bin/draccus run -- bash -lc 'test "$DRACCUS_PREFIX" = /opt/draccus'
+./bin/draccus build -- bash -lc 'test "$DRACCUS_PREFIX" = /opt/draccus'
 ./bin/draccus build -- bash -lc 'test "$SPACK_ROOT" = /opt/draccus/spack'
 ./scripts/validate-static.sh
 ```
@@ -477,7 +453,7 @@ Expected: all commands exit 0 and Gate 0 passes.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add bin/draccus-run bin/draccus-build lib/draccus-runtime.sh lib/draccus-cli.sh scripts/validate-static.sh
+git add bin/draccus lib/draccus-runtime.sh lib/draccus-cli.sh scripts/validate-static.sh
 git commit -m "Extract Draccus runtime launcher logic"
 ```
 
@@ -821,7 +797,7 @@ Add to `SHELL_FILES`:
 
 - [ ] **Step 2: Move current shell behavior into `lib/draccus-shell.sh`**
 
-Create `lib/draccus-shell.sh` by moving current `bin/draccus-shell` functions into:
+Create `lib/draccus-shell.sh` by moving the shell startup functions into:
 
 ```bash
 # shellcheck shell=bash
@@ -858,11 +834,11 @@ draccus_shell_main() {
 }
 ```
 
-Keep the existing `draccus_shell_ensure_starship` and `draccus_shell_write_zdotdir` function bodies exactly from current `bin/draccus-shell`.
+Keep the existing `draccus_shell_ensure_starship` and `draccus_shell_write_zdotdir` function bodies intact.
 
 - [ ] **Step 3: Update `lib/draccus-uv.sh` to use runtime library and project config**
 
-Replace `"$DRACCUS_BUNDLE/bin/draccus-run"` calls with `draccus_runtime_exec_run`.
+Replace direct legacy launcher calls with `draccus_runtime_exec_run`.
 
 At the start of `draccus_uv_main`, add:
 
@@ -1175,7 +1151,7 @@ git commit -m "Record draccus run executions"
 ### Task 8: Remove Legacy Public Entrypoints And Update Validation
 
 **Files:**
-- Remove: legacy `bin/draccus-*` files listed in the file map
+- Remove: legacy public files listed in the file map
 - Modify: `scripts/validate-static.sh`
 - Modify: `scripts/validate-all.sh`
 - Modify: `lib/draccus-*.sh` as needed to stop referencing old entrypoints
@@ -1184,25 +1160,22 @@ git commit -m "Record draccus run executions"
 
 In `scripts/validate-static.sh`:
 
-- Remove legacy `bin/draccus-*` entries from `SHELL_FILES` and `LAUNCHERS`.
+- Remove legacy public-file entries from `SHELL_FILES` and `LAUNCHERS`.
 - Keep only `"$DRACCUS_BUNDLE/bin/draccus"` as public launcher.
-- Replace checks containing `draccus-run`/`draccus-shell`/`draccus-uv` with checks against library files and `bin/draccus`, for example:
+- Replace checks containing `draccus run`/`draccus shell`/`draccus uv` with checks against library files and `bin/draccus`, for example:
 
 ```bash
 check "single public draccus command exists" "test -x \"$DRACCUS_BUNDLE/bin/draccus\""
 check "runtime library mounts shims" "grep -qF '/opt/draccus/shims' \"$DRACCUS_BUNDLE/lib/draccus-runtime.sh\""
 check "shell library configures starship" "grep -qF 'starship init zsh' \"$DRACCUS_BUNDLE/lib/draccus-shell.sh\""
 check "uv library blocks foundation installs" "grep -qF 'refusing to install foundation package' \"$DRACCUS_BUNDLE/lib/draccus-uv.sh\""
-check "no legacy public entrypoints" "! find \"$DRACCUS_BUNDLE/bin\" -maxdepth 1 -type f -name 'draccus-*' | grep -q ."
+check "no legacy public entrypoints" "_draccus_no_legacy_public_entrypoints"
 ```
 
 In `scripts/validate-all.sh`, replace:
 
 ```bash
-"$DRACCUS_BUNDLE/bin/draccus-probe"
-"$DRACCUS_BUNDLE/bin/draccus-build" bash -lc '...'
-"$DRACCUS_BUNDLE/bin/draccus-run" bash -lc '...'
-DRACCUS_OFFLINE=1 "$DRACCUS_BUNDLE/bin/draccus-offline" bash -lc '...'
+old probe/build/run/offline launcher invocations
 ```
 
 with:
@@ -1217,21 +1190,21 @@ Do not keep the offline gate unless the workstream explicitly adds an approved `
 
 - [ ] **Step 2: Remove legacy files**
 
-Run:
-
-```bash
-git rm bin/draccus-run bin/draccus-build bin/draccus-shell bin/draccus-uv bin/draccus-probe bin/draccus-project-init bin/draccus-debug-shell bin/draccus-offline
-```
+Remove the legacy public files for run, build, shell, uv, probe, project init,
+debug shell, and offline behavior. Task 8 completed this with `git rm`; keep
+them absent rather than adding compatibility shims.
 
 - [ ] **Step 3: Search for legacy public command references**
 
 Run:
 
 ```bash
-rg -n "bin/draccus-(run|shell|uv|probe|project-init|build|offline|debug-shell)|\\./bin/draccus-(run|shell|uv|probe|project-init|build|offline|debug-shell)" README.md DESIGN.md docs scripts projects .workstream
+./scripts/validate-static.sh
 ```
 
-Expected: no future-facing references remain. References in old closed workstream logs may remain only if they are historical artifacts and not active instructions; do not rewrite large historical logs.
+Expected: the stale-reference checks pass. References in old closed workstream
+logs may remain only if they are historical artifacts and not active
+instructions; do not rewrite large historical logs.
 
 - [ ] **Step 4: Run validation**
 
@@ -1293,9 +1266,9 @@ Keep the existing details about read-only runtime, writable build mode, cache lo
 Replace command examples:
 
 ```bash
-./bin/draccus-shell
-./bin/draccus-run bash -lc 'python -V'
-./bin/draccus-uv pip install transformers
+./bin/draccus shell
+./bin/draccus run -- bash -lc 'python -V'
+./bin/draccus uv pip install transformers
 ```
 
 with:
@@ -1311,7 +1284,7 @@ draccus uv pip install transformers
 Run:
 
 ```bash
-rg -n "draccus-run|draccus-shell|draccus-uv|draccus-probe|draccus-project-init|draccus-build|draccus-offline" README.md DESIGN.md docs projects scripts
+./scripts/validate-static.sh
 ```
 
 Expected: no active docs/scripts references. If historical closed workstream docs still mention old commands, leave them only if they are clearly historical and not user guidance.

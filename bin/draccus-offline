@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-DRACCUS_OFFLINE=1 exec "$(dirname "$0")/draccus-run" "$@"

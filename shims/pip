@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
-echo "pip is disabled inside draccus — use 'draccus-uv pip <args>' (or 'uv pip <args>' inside the namespace) instead" >&2
+echo "pip is disabled inside draccus; use 'draccus uv pip <args>' (or 'uv pip <args>' inside the namespace) instead" >&2
 exit 2

@@ -1,26 +1,68 @@
 [env]
-DRACCUS_BUNDLE = "/data02/home/philip.yang/draccus"
 UV_CACHE_DIR = "/opt/draccus/cache/uv"
 HF_HOME = "/opt/draccus/cache/huggingface"
 TORCH_CUDA_ARCH_LIST = "10.0"
 PYTHONNOUSERSITE = "1"
 
-[tasks.draccus-shell]
-run = "$DRACCUS_BUNDLE/bin/draccus-shell"
-
-[tasks.draccus-venv]
+[tasks.shell]
 run = '''
-"$DRACCUS_BUNDLE/bin/draccus-run" bash -lc '
-  uv venv --python "$(which python)" --system-site-packages .venv
-'
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+export DRACCUS_BUNDLE="${DRACCUS_BUNDLE:-$repo_root}"
+"$repo_root/bin/draccus" shell
 '''
 
-[tasks.draccus-validate]
+[tasks.venv]
+description = "Create the canonical venv for a Draccus project (set DRACCUS_PROJECT or run from a project)"
 run = '''
-"$DRACCUS_BUNDLE/bin/draccus-run" bash -lc '
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+project_dir="${DRACCUS_PROJECT:-${DRACCUS_WORKSPACE:-$PWD}}"
+project_dir="$(cd "$project_dir" 2>/dev/null && pwd)" || {
+  echo "mise task 'venv' requires DRACCUS_PROJECT to point at an existing Draccus project" >&2
+  exit 2
+}
+while [ "$project_dir" != / ] && [ ! -f "$project_dir/draccus.yaml" ]; do
+  project_dir="$(dirname "$project_dir")"
+done
+if [ ! -f "$project_dir/draccus.yaml" ]; then
+  echo "mise task 'venv' requires a Draccus project. Run from a directory containing draccus.yaml, or set DRACCUS_PROJECT=/path/to/project." >&2
+  exit 2
+fi
+export DRACCUS_BUNDLE="${DRACCUS_BUNDLE:-$repo_root}"
+(cd "$project_dir" && "$repo_root/bin/draccus" run --no-record -- bash -lc '
+  uv venv --python "$(which python)" --system-site-packages .venv
+')
+'''
+
+[tasks.validate]
+description = "Validate foundation imports from a Draccus project (set DRACCUS_PROJECT or run from a project)"
+run = '''
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+project_dir="${DRACCUS_PROJECT:-${DRACCUS_WORKSPACE:-$PWD}}"
+project_dir="$(cd "$project_dir" 2>/dev/null && pwd)" || {
+  echo "mise task 'validate' requires DRACCUS_PROJECT to point at an existing Draccus project" >&2
+  exit 2
+}
+while [ "$project_dir" != / ] && [ ! -f "$project_dir/draccus.yaml" ]; do
+  project_dir="$(dirname "$project_dir")"
+done
+if [ ! -f "$project_dir/draccus.yaml" ]; then
+  echo "mise task 'validate' requires a Draccus project. Run from a directory containing draccus.yaml, or set DRACCUS_PROJECT=/path/to/project." >&2
+  exit 2
+fi
+export DRACCUS_BUNDLE="${DRACCUS_BUNDLE:-$repo_root}"
+(cd "$project_dir" && "$repo_root/bin/draccus" run --no-record -- bash -lc '
   source .venv/bin/activate 2>/dev/null || true
-  python scripts/validate_foundation.py
-'
+  python - <<PY
+from pathlib import Path
+
+for name in ("torch", "jax", "jaxlib", "numpy", "scipy"):
+    module = __import__(name)
+    module_path = Path(getattr(module, "__file__", "")).resolve()
+    if not str(module_path).startswith("/opt/draccus/"):
+        raise SystemExit(f"{name} resolved outside /opt/draccus: {module_path}")
+    print(f"{name}: {module_path}")
+PY
+')
 '''
 
 [tasks.draccus-lint]

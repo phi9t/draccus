@@ -14,7 +14,7 @@ draccus_shell_ensure_starship() {
   fi
 
   if ! command -v curl >/dev/null 2>&1 || ! command -v tar >/dev/null 2>&1 || ! command -v sha256sum >/dev/null 2>&1; then
-    echo "draccus-shell: starship bootstrap skipped: curl, tar, and sha256sum are required" >&2
+    echo "draccus shell: starship bootstrap skipped: curl, tar, and sha256sum are required" >&2
     return 0
   fi
 

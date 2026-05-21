@@ -57,15 +57,15 @@ To change it: get explicit user approval AND update both the array AND this file
 - uv owns: transformers, datasets, accelerate, peft, trl, vllm, flash-attn, etc.
 
 Never write uv pip install torch, uv pip install jax, uv pip install numpy, etc.
-Always create project venvs with: draccus-uv venv --python $(which python) --system-site-packages .venv
-Always install packages with: draccus-uv pip install transformers datasets accelerate
+Always create project venvs with: ./bin/draccus uv venv --python $(which python) --system-site-packages .venv
+Always install packages with: ./bin/draccus uv pip install transformers datasets accelerate
 
 ### 3. Canonical prefix contract
 
 - Inside bwrap: paths must be under /opt/draccus or /workspace
 - Never hardcode physical host paths (e.g. /data02/home/philip.yang/...) inside bwrap scripts
 - DRACCUS_BUNDLE is resolved portably via lib/draccus-env.sh
-- draccus-run mounts Spack read-only; draccus-build mounts it read-write
+- draccus run mounts Spack read-only; draccus build mounts it read-write
 
 ### 4. Pinned versions (do not change without explicit request)
 
@@ -80,14 +80,14 @@ Target hardware is NVIDIA B200 (SM major=10). Do not change cuda_arch or TORCH_C
 
 ### 6. Pip is disabled inside the namespace
 
-Bare `pip` / `pip3` on `PATH` resolve to bundle shims under `shims/pip` that exit with a clear message directing you to `draccus-uv pip` (or `uv pip` inside the namespace). Authoritative shim source: `shims/pip`. To change this: get explicit user approval and update both `shims/pip` (and `shims/pip3`, which points at the same content) and this file.
+Bare `pip` / `pip3` on `PATH` resolve to bundle shims under `shims/pip` that exit with a clear message directing you to `draccus uv pip` (or `uv pip` inside the namespace). Authoritative shim source: `shims/pip`. To change this: get explicit user approval and update both `shims/pip` (and `shims/pip3`, which points at the same content) and this file.
 
 ## Validation gate sequence
 
 | When | Gate | Command |
 |------|------|---------|
 | After any file edit | Gate 0 (no GPU) | ./scripts/validate-static.sh |
-| After Spack env change | Gate 1 + 3/4 | ./bin/draccus-probe && ./scripts/validate-base-sys.sh |
+| After Spack env change | Gate 1 + 3/4 | ./bin/draccus doctor && ./scripts/validate-base-sys.sh |
 | After base-ml change | Gates 6-9 | ./scripts/validate-base-ml.sh |
 | Full acceptance | All 13 gates (GPU required) | ./scripts/validate-all.sh |
 | Fast lint only | Lint only | mise run draccus-lint |
@@ -106,7 +106,7 @@ Bare `pip` / `pip3` on `PATH` resolve to bundle shims under `shims/pip` that exi
 
 - .gitignore excludes: rootfs/, state/, cache/, build/, projects/, __pycache__/, *.pyc, .venv/
 - Pre-commit hooks enforce Gate 0 on every commit (shellcheck, shfmt, ruff, yamllint)
-- Tracked source: bin/ (including draccus-uv), lib/, scripts/ (including uv_overrides.txt), envs/*/spack.yaml, mise.toml, README.md, DESIGN.md, docs/, AGENTS.md (+ CLAUDE.md symlink), .cursor/ (project MCP + rules), .trae/ (Coco model notes; `.trae/artifacts/` is gitignored), .workstream/
+- Tracked source: bin/ (including the draccus dispatcher), lib/, scripts/ (including uv_overrides.txt), envs/*/spack.yaml, mise.toml, README.md, DESIGN.md, docs/, AGENTS.md (+ CLAUDE.md symlink), .cursor/ (project MCP + rules), .trae/ (Coco model notes; `.trae/artifacts/` is gitignored), .workstream/
 - Test layout: keep test code adjacent to the implementation it exercises. For example, `scripts/foo_bar.py` should have `scripts/foo_bar_test.py`; `scripts/foo_bar.sh` should have `scripts/foo_bar_test.sh`. Shared fixtures should stay as close as practical to the owning test or implementation, not in a broad top-level test tree.
 
 ## Code structure
@@ -118,7 +118,7 @@ Bare `pip` / `pip3` on `PATH` resolve to bundle shims under `shims/pip` that exi
 ## Isolated rootfs
 
 - `rootfs/` is a generated runtime artifact, not source. It may be a symlink to externalized state under `~/.automata/draccus`, but it must never be committed.
-- `draccus-run` and `draccus-offline` mount the rootfs read-only. Runtime writes must go only to explicit writable surfaces: `/workspace`, `/tmp`, `/run`, `/opt/draccus/cache`, `/opt/draccus/build`, and narrowly-scoped state such as `/var/intel` when documented.
+- `draccus run` and `DRACCUS_OFFLINE=1 draccus run` mount the rootfs read-only. Runtime writes must go only to explicit writable surfaces: `/workspace`, `/tmp`, `/run`, `/opt/draccus/cache`, `/opt/draccus/build`, and narrowly-scoped state such as `/var/intel` when documented.
 - Do not rely on accidental host filesystem state inside the namespace. Host inputs must be explicit launcher mounts or `--ro-bind-data` overlays with documented purpose. Do not bake host-specific `/etc/hosts`, `/etc/resolv.conf`, shell startup files, user homes, or Nix/profile paths into the production rootfs.
 - NVIDIA driver libraries and device nodes are the allowed host escape hatch for GPU execution; they must remain discoverable and auditable through `lib/draccus-nvidia-mounts.sh`.
 
@@ -139,19 +139,19 @@ For **Cursor** sessions on this repo, isolated research/planning can be delegate
 ./scripts/validate-static.sh
 
 # Interactive ML sandbox (torch/jax python out of the box)
-./bin/draccus-shell
+./bin/draccus shell
 
 # Run a command in the sandbox
-./bin/draccus-run bash -lc 'python train.py'
+./bin/draccus run -- bash -lc 'python train.py'
 
 # Add packages (with layering protection)
-./bin/draccus-uv pip install transformers accelerate
+./bin/draccus uv pip install transformers accelerate
 
 # Debug shell (base-sys before base-ml on PATH)
-./bin/draccus-debug-shell
+DRACCUS_PREFER_SYS_PATH=1 ./bin/draccus shell
 
 # Build/update Spack environments (writable sandbox)
-./bin/draccus-build bash -lc '. /opt/draccus/spack/share/spack/setup-env.sh && spack env activate base-ml && spack install'
+./bin/draccus build -- bash -lc '. /opt/draccus/spack/share/spack/setup-env.sh && spack env activate base-ml && spack install'
 
 # Run Gate 0 (always safe, no GPU needed)
 ./scripts/validate-static.sh

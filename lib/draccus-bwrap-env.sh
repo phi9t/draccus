@@ -9,7 +9,7 @@
 
 shopt -s nocasematch
 
-# These variables are the sourced-library contract consumed by bin/draccus-run/build.
+# These variables are the sourced-library contract consumed by draccus run/build runtime modes.
 # shellcheck disable=SC2034
 if [[ ! "${DRACCUS_USE_DOCKER_CUDA:-1}" =~ ^(0|false|no)$ ]]; then
   if [[ -x "${DRACCUS_STATE}/view/base-ml/bin/nvcc" ]]; then

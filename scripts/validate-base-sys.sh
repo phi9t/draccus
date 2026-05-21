@@ -3,11 +3,13 @@ set -euo pipefail
 
 # shellcheck source=../lib/draccus-env.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/draccus-env.sh"
+# shellcheck source=../lib/draccus-runtime.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/draccus-runtime.sh"
 
-# Gate 3: exercise the runtime contract (draccus-run mounts Spack read-only).
+# Gate 3: exercise the runtime contract (run mode mounts Spack read-only).
 # Avoid `spack env activate` here — Spack tries to acquire a transaction lock under the
-# environment directory and fails with EROFS under draccus-run.
-"$DRACCUS_BUNDLE/bin/draccus-run" bash -lc '
+# environment directory and fails with EROFS under run mode.
+draccus_runtime_exec_run bash -lc '
   set -euo pipefail
 
   echo "[base-sys paths]"

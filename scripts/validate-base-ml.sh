@@ -3,15 +3,17 @@ set -euo pipefail
 
 # shellcheck source=../lib/draccus-env.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/draccus-env.sh"
+# shellcheck source=../lib/draccus-runtime.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/draccus-runtime.sh"
 
-"$DRACCUS_BUNDLE/bin/draccus-run" bash -lc '
+draccus_runtime_exec_run bash -lc '
   set -euo pipefail
 
   echo "[paths]"
   test "${SPACK_ROOT:-}" = /opt/draccus/spack
   export PATH="/opt/draccus/view/base-ml/bin:${PATH}"
   # Spack jaxlib installs omit JAX pip `nvidia.*` shim dirs used for dlopen (`jax_plugins.xla_cuda12._load_nvidia_libraries`).
-  # After installing `py-jaxlib`, run the one-time stub layout under the active workstream (`.workstream/spack-envs-bootstrap/artifacts/p4.3-jax-nvidia-stubs.sh` or tracker ** Log) inside `draccus-build`.
+  # After installing `py-jaxlib`, run the one-time stub layout under the active workstream (`.workstream/spack-envs-bootstrap/artifacts/p4.3-jax-nvidia-stubs.sh` or tracker ** Log) inside `draccus build`.
   # PJRT CUDA optional `cufftGetVersion`/`cuSOLVER` probes can also spuriously fail on multi-toolkit Docker rootfs; skip version probes while keeping real GPU asserts below.
   export JAX_SKIP_CUDA_CONSTRAINTS_CHECK="${JAX_SKIP_CUDA_CONSTRAINTS_CHECK:-1}"
 

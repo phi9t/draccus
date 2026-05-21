@@ -249,7 +249,7 @@ bootstrap_uv_into_rootfs() {
   fi
 
   local tmp uv_bin=""
-  tmp="$(mktemp -d "${TMPDIR:-/tmp}/draccus-uv.XXXXXX")"
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/uv-download.XXXXXX")"
   tar -xzf "$tgz" -C "$tmp"
 
   if [[ -f "$tmp/uv" ]]; then

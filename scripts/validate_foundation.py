@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Draccus foundation validation (EDD Appendix B / Gates 6–9).
 
-Expects to run inside draccus-run with base-ml on PATH:
+Expects to run inside `draccus run` or the runtime library's run mode with base-ml on PATH:
 
   export PATH=/opt/draccus/view/base-ml/bin:$PATH
   export SPACK_ROOT=/opt/draccus/spack

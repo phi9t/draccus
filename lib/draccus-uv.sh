@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # Draccus uv wrapper logic.
-# Source this file from bin/draccus-uv; do not execute directly.
+# Source this file from the unified draccus dispatcher; do not execute directly.
 
 # shellcheck source=draccus-project.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/draccus-project.sh"
@@ -59,7 +59,7 @@ draccus_uv_check_requirement_file() {
         ;;
     esac
     if forbidden="$(draccus_uv_forbidden_requirement_p "$line")"; then
-      echo "draccus-uv: refusing to install foundation package '$forbidden' from $reqfile; it must resolve from /opt/draccus/view/base-ml" >&2
+      echo "draccus uv: refusing to install foundation package '$forbidden' from $reqfile; it must resolve from /opt/draccus/view/base-ml" >&2
       return 2
     fi
   done <"$reqfile"
@@ -102,7 +102,7 @@ draccus_uv_reject_forbidden_installs() {
     esac
 
     if forbidden="$(draccus_uv_forbidden_requirement_p "$arg")"; then
-      echo "draccus-uv: refusing to install foundation package '$forbidden'; it must resolve from /opt/draccus/view/base-ml" >&2
+      echo "draccus uv: refusing to install foundation package '$forbidden'; it must resolve from /opt/draccus/view/base-ml" >&2
       return 2
     fi
   done
@@ -124,7 +124,7 @@ draccus_uv_audit_pip_plan() {
         installed="${line# + }"
         installed="${installed%%==*}"
         if forbidden="$(draccus_uv_forbidden_requirement_p "$installed")"; then
-          echo "draccus-uv: refusing install plan because it would add foundation package '$forbidden'; it must resolve from /opt/draccus/view/base-ml" >&2
+          echo "draccus uv: refusing install plan because it would add foundation package '$forbidden'; it must resolve from /opt/draccus/view/base-ml" >&2
           return 2
         fi
         ;;

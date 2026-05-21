@@ -3,10 +3,12 @@ set -euo pipefail
 
 # shellcheck source=../lib/draccus-env.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/draccus-env.sh"
+# shellcheck source=../lib/draccus-runtime.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/draccus-runtime.sh"
 # shellcheck source=../lib/draccus-project.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/draccus-project.sh"
 
-"$DRACCUS_BUNDLE/bin/draccus-run" bash -lc '
+(draccus_runtime_exec_run bash -lc '
   set -euo pipefail
   export PATH="/opt/draccus/view/base-ml/bin:${PATH}"
   export SPACK_ROOT=/opt/draccus/spack
@@ -49,6 +51,6 @@ import torch
 assert torch.cuda.is_available(), "torch CUDA unavailable"
 print("project overlay validation OK")
 PY
-'
+')
 
 draccus_project_neutralize_pip "${PWD%/}/.venv"

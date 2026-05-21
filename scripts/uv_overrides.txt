@@ -1,6 +1,6 @@
 # Draccus UV_EXTRA_OVERRIDES
 # Single source of truth for packages that must always resolve from the Spack base-ml view.
-# Injected automatically by draccus-run / draccus-uv so uv's resolver never
+# Injected automatically by draccus run / draccus uv so uv's resolver never
 # installs conflicting copies of the foundation stack into project .venvs.
 #
 # These match the DO_NOT_SHADOW list in scripts/validate_uv_layering.sh.

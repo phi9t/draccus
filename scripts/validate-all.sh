@@ -18,6 +18,24 @@ echo "Bundle: $DRACCUS_BUNDLE"
 echo "Date: $(date -Iseconds)"
 echo
 
+_draccus_validate_project_dir=""
+_draccus_validate_project() {
+  if [[ -z "$_draccus_validate_project_dir" ]]; then
+    _draccus_validate_project_dir="$(mktemp -d "${TMPDIR:-/tmp}/draccus-validate-all.XXXXXX")"
+    cat >"$_draccus_validate_project_dir/draccus.yaml" <<'EOF'
+name: validate-all
+EOF
+  fi
+  printf '%s\n' "$_draccus_validate_project_dir"
+}
+
+_draccus_validate_cleanup() {
+  if [[ -n "$_draccus_validate_project_dir" ]]; then
+    rm -rf "$_draccus_validate_project_dir"
+  fi
+}
+trap _draccus_validate_cleanup EXIT
+
 # Gate 0: Static/structural checks (no GPU required)
 echo "[Gate 0] Static/structural checks (validate-static.sh)"
 "$DRACCUS_BUNDLE/scripts/validate-static.sh"
@@ -25,12 +43,12 @@ echo
 
 # Gate 1: bwrap + rootfs contract
 echo "[Gate 1] Namespace / rootfs / path contract"
-"$DRACCUS_BUNDLE/bin/draccus-probe"
+"$DRACCUS_BUNDLE/bin/draccus" doctor
 echo
 
 # Gate 2: Spack path canonicality + pinned revision (supports SPACK_REF workflow)
 echo "[Gate 2] Spack path canonicality + revision"
-"$DRACCUS_BUNDLE/bin/draccus-build" bash -lc '
+"$DRACCUS_BUNDLE/bin/draccus" build -- bash -lc '
   set -euo pipefail
   test "$SPACK_ROOT" = /opt/draccus/spack
   . /opt/draccus/spack/share/spack/setup-env.sh
@@ -49,7 +67,7 @@ echo
 
 # Gate 4: base-ml concretization pre-install (check pins)
 echo "[Gate 4] base-ml concretization & pin verification"
-"$DRACCUS_BUNDLE/bin/draccus-build" bash -lc '
+"$DRACCUS_BUNDLE/bin/draccus" build -- bash -lc '
   set -euo pipefail
   . /opt/draccus/spack/share/spack/setup-env.sh
   spack -e base-ml concretize -f
@@ -92,11 +110,17 @@ echo
 # When enabled via RUN_CUDA_EXT_TEST=1, this gate is fatal on failure (failfast).
 if [[ "${RUN_CUDA_EXT_TEST:-0}" == "1" ]]; then
   echo "[Gate 11] CUDA extension ABI test (flash-attn)"
-  "$DRACCUS_BUNDLE/bin/draccus-run" bash -lc '
+  _gate11_project="$(_draccus_validate_project)"
+  (
+    cd "$_gate11_project"
+    "$DRACCUS_BUNDLE/bin/draccus" run --no-record -- bash -lc '
     set -euo pipefail
     export PATH="/opt/draccus/view/base-ml/bin:${PATH}"
     export SPACK_ROOT=/opt/draccus/spack
-    source .venv/bin/activate 2>/dev/null || true
+    if [[ ! -d .venv ]]; then
+      uv venv --python "$(which python)" --system-site-packages .venv
+    fi
+    source .venv/bin/activate
     export CUDA_HOME=/opt/draccus/view/base-ml
     export CMAKE_PREFIX_PATH=/opt/draccus/view/base-ml
     export TORCH_CUDA_ARCH_LIST=10.0
@@ -104,15 +128,17 @@ if [[ "${RUN_CUDA_EXT_TEST:-0}" == "1" ]]; then
     uv pip install --no-build-isolation flash-attn
     python -c "import flash_attn; print(flash_attn.__file__)"
   '
+  )
 else
   echo "[Gate 11] CUDA extension test skipped (set RUN_CUDA_EXT_TEST=1 to enable)"
 fi
 echo
 
-# Gate 12: mise task validation (if mise.toml exists in current or projects/)
-if command -v mise >/dev/null 2>&1 && [[ -f mise.toml || -f projects/example/mise.toml ]]; then
+# Gate 12: mise task validation (if mise.toml exists in the bundle)
+if command -v mise >/dev/null 2>&1 && [[ -f "$DRACCUS_BUNDLE/mise.toml" ]]; then
   echo "[Gate 12] mise task validation"
-  mise run draccus-validate 2>/dev/null || echo "  (no draccus-validate task defined or mise not configured for this project)"
+  _gate12_project="$(_draccus_validate_project)"
+  (cd "$DRACCUS_BUNDLE" && DRACCUS_PROJECT="$_gate12_project" mise run validate)
 else
   echo "[Gate 12] mise validation skipped (mise not found or no mise.toml)"
 fi
@@ -120,18 +146,22 @@ echo
 
 # Gate 13: Offline reproducibility
 echo "[Gate 13] Offline reproducibility"
-DRACCUS_OFFLINE=1 "$DRACCUS_BUNDLE/bin/draccus-offline" bash -lc '
-  set -euo pipefail
-  export PATH="/opt/draccus/view/base-ml/bin:${PATH}"
-  export SPACK_ROOT=/opt/draccus/spack
-  export JAX_SKIP_CUDA_CONSTRAINTS_CHECK="${JAX_SKIP_CUDA_CONSTRAINTS_CHECK:-1}"
-  python -c "
+_gate13_project="$(_draccus_validate_project)"
+(
+  cd "$_gate13_project"
+  DRACCUS_OFFLINE=1 "$DRACCUS_BUNDLE/bin/draccus" run --no-record -- bash -lc '
+    set -euo pipefail
+    export PATH="/opt/draccus/view/base-ml/bin:${PATH}"
+    export SPACK_ROOT=/opt/draccus/spack
+    export JAX_SKIP_CUDA_CONSTRAINTS_CHECK="${JAX_SKIP_CUDA_CONSTRAINTS_CHECK:-1}"
+    python -c "
 import torch, jax, numpy, scipy
 print(\"offline imports successful\")
 print(\"torch file:\", torch.__file__)
 assert \"/opt/draccus/\" in torch.__file__
 "
-'
+  '
+)
 echo
 
 echo "=== All executed gates completed ==="

@@ -4,7 +4,7 @@ set -euo pipefail
 # shellcheck source=../lib/draccus-env.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/draccus-env.sh"
 
-"$DRACCUS_BUNDLE/bin/draccus-build" bash -lc '
+"$DRACCUS_BUNDLE/bin/draccus" build -- bash -lc '
   set -euo pipefail
   . /opt/draccus/spack/share/spack/setup-env.sh
   echo "Unused specs:"

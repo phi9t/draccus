@@ -313,25 +313,47 @@ Fill before the dependent phase starts.
     - =.workstream/single-command-cli/artifacts/p4.1-p4.2-validate-static.log=
 
 * Phase 5 — Remove legacy surface and enforce validation :phase5:
-** TODO P5.1 Remove legacy per-command entrypoints
+** DONE P5.1 Remove legacy per-command entrypoints
    :PROPERTIES:
    :ID:       P5.1
-   :OWNER:
-   :STARTED:
-   :FINISHED:
+   :OWNER:   codex-implementer-task8
+   :STARTED: 2026-05-21T21:41:30Z
+   :FINISHED: 2026-05-21T21:46:18Z
    :DEPENDS:  P3.1 P3.2 P3.3 P3.5 P4.2
    :END:
    DoD: =bin/= contains only the approved public command plus non-public files explicitly justified; docs and scripts no longer use legacy public command names; Gate 0 passes.
 
-** TODO P5.2 Update Gate 0 and pre-commit expectations
+*** Log
+    - Red check: added =no legacy public entrypoints= to Gate 0; validation failed as expected while the legacy =bin/draccus-*= files still existed.
+    - Removed legacy public entrypoints with =git rm=: =draccus-run=, =draccus-build=, =draccus-shell=, =draccus-uv=, =draccus-probe=, =draccus-project-init=, =draccus-debug-shell=, and =draccus-offline=.
+    - Updated active validation/build scripts to use =bin/draccus= subcommands or the internal runtime library where no project-bound command surface exists.
+    - Task 8 review follow-up 2026-05-21T22:01:01Z: updated active docs, =mise.toml=, and pip shims so user-facing instructions use =./bin/draccus= subcommands and no longer point at removed public entrypoints. =mise.toml= now derives the repo root instead of hardcoding a developer checkout path.
+
+*** Artifacts
+    - =.workstream/single-command-cli/artifacts/p5.1-red-legacy-entrypoints.log=
+    - =.workstream/single-command-cli/artifacts/p5.1-p5.2-validate-static.log=
+
+** DONE P5.2 Update Gate 0 and pre-commit expectations
    :PROPERTIES:
    :ID:       P5.2
-   :OWNER:
-   :STARTED:
-   :FINISHED:
+   :OWNER:   codex-implementer-task8
+   :STARTED: 2026-05-21T21:41:30Z
+   :FINISHED: 2026-05-21T21:46:18Z
    :DEPENDS:  P5.1
    :END:
    DoD: =./scripts/validate-static.sh= enforces the single-command surface and passes.
+
+*** Log
+    - Gate 0 now shellchecks/shfmts only =bin/draccus= as the public launcher and enforces absence of the removed legacy entrypoints.
+    - Removed the optional Gate 0 =draccus-probe= execution path; Gate 0 remains no-GPU and explicitly checks that it does not run =draccus doctor=.
+    - Verified =PATH="$HOME/.local/bin:$PATH" env -u DRACCUS_BUNDLE DRACCUS_ROOTFS=/data02/home/philip.yang/draccus/rootfs ./scripts/validate-static.sh= with =116 passed, 0 failed=.
+    - Task 8 review follow-up 2026-05-21T22:01:01Z: added Gate 0 checks for =draccus uv pip <args>= shim guidance and stale legacy public command references in active docs/config. Red check failed on the intended two checks; final rootfs-overridden Gate 0 passed with =118 passed, 0 failed=. Plain =env -u DRACCUS_BUNDLE ./scripts/validate-static.sh= still fails in the linked worktree because runtime smoke checks need a populated rootfs.
+    - Task 8 re-review follow-up 2026-05-21T22:10:08Z: extended Gate 0 stale-reference coverage to active pre-commit and validation scripts, caught wildcard =bin/draccus-*= references, fixed repo-level mise project task guidance, and made Gate 12 call the defined =validate= task. Red check failed on the intended five checks; final rootfs-overridden Gate 0 passed with =122 passed, 0 failed=.
+    - Task 8 final review follow-up 2026-05-21T22:16:04Z: added template dotfiles and all tracked project-template files to stale-reference coverage, updated the remaining template comments away from =draccus-project-init=, and corrected README/DESIGN wording so =draccus shell= is described as native interactive-only on the shared run-mode runtime, not as public =draccus run -- bash=.
+    - Task 8 final review follow-up 2026-05-21T22:26:23Z: added the single-command implementation plan to active stale-reference scanning, updated that tracked plan away from deleted public entrypoint examples, changed =mise validate= to run an inline project-bound import/provenance smoke through =draccus run --no-record=, and added Gate 0 coverage for the removed =/opt/draccus/scripts/validate_foundation.py= path.
+
+*** Artifacts
+    - =.workstream/single-command-cli/artifacts/p5.1-p5.2-validate-static.log=
 
 * Phase 6 — Docs and acceptance :phase6:
 ** TODO P6.1 Rewrite README and DESIGN around =draccus=

@@ -31,6 +31,44 @@ _draccus_shims_dir_ok() {
   [[ "$n" -eq 2 ]]
 }
 
+_draccus_no_legacy_public_entrypoints() {
+  local legacy
+  for legacy in \
+    draccus-run \
+    draccus-build \
+    draccus-shell \
+    draccus-uv \
+    draccus-probe \
+    draccus-project-init \
+    draccus-debug-shell \
+    draccus-offline; do
+    [[ ! -e "$DRACCUS_BUNDLE/bin/$legacy" ]] || return 1
+  done
+}
+
+_draccus_no_stale_active_public_refs() {
+  local files=(
+    "$DRACCUS_BUNDLE/AGENTS.md"
+    "$DRACCUS_BUNDLE/DESIGN.md"
+    "$DRACCUS_BUNDLE/README.md"
+    "$DRACCUS_BUNDLE/.pre-commit-config.yaml"
+    "$DRACCUS_BUNDLE/docs/superpowers/plans/2026-05-21-single-command-cli.md"
+    "$DRACCUS_BUNDLE/docs/tech-blog-hello-draccus.md"
+    "$DRACCUS_BUNDLE/mise.toml"
+    "$DRACCUS_BUNDLE/projects/_template/.gitignore"
+    "$DRACCUS_BUNDLE/projects/_template/.python-version"
+    "$DRACCUS_BUNDLE/projects/_template/README.md"
+    "$DRACCUS_BUNDLE/projects/_template/draccus.yaml"
+    "$DRACCUS_BUNDLE/projects/_template/pyproject.toml"
+    "$DRACCUS_BUNDLE/scripts/validate-all.sh"
+    "$DRACCUS_BUNDLE/shims/pip"
+    "$DRACCUS_BUNDLE/shims/pip3"
+  )
+  local pattern='(^|[^[:alnum:]_./-])(bin/|\./bin/)?draccus-(run|build|shell|uv|probe|project-init|debug-shell|offline)([^[:alnum:]_./-]|$)|bin/draccus-\*|DRACCUS_BUNDLE[[:space:]]*=[[:space:]]*"/data02/home/philip.yang/draccus"'
+
+  ! grep -nE "$pattern" "${files[@]}" >/dev/null
+}
+
 _draccus_run_binds_shims() {
   grep -qF -- '--ro-bind "$DRACCUS_BUNDLE/shims" /opt/draccus/shims' "$DRACCUS_RUNTIME_LIB"
 }
@@ -76,7 +114,7 @@ EOF
 
 _draccus_run_rejects_missing_config() {
   local tmpdir output status ok=1
-  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/draccus-run-missing-config.XXXXXX")"
+  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/draccus-cli-run-missing-config.XXXXXX")"
 
   set +e
   output="$(cd "$tmpdir" && "$DRACCUS_BUNDLE/bin/draccus" run --no-record -- true 2>&1)"
@@ -93,7 +131,7 @@ _draccus_run_rejects_missing_config() {
 
 _draccus_run_no_record_ok() {
   local tmpdir project output status ok=1
-  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/draccus-run-no-record.XXXXXX")"
+  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/draccus-cli-run-no-record.XXXXXX")"
   project="$tmpdir/project"
   mkdir -p "$project"
   cat >"$project/draccus.yaml" <<EOF
@@ -118,7 +156,7 @@ EOF
 
 _draccus_run_success_record_ok() {
   local tmpdir project output status run_json result_json ok=1
-  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/draccus-run-success.XXXXXX")"
+  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/draccus-cli-run-success.XXXXXX")"
   project="$tmpdir/project"
   mkdir -p "$project"
   cat >"$project/draccus.yaml" <<EOF
@@ -152,7 +190,7 @@ EOF
 
 _draccus_run_failure_record_ok() {
   local tmpdir project output status run_json result_json ok=1
-  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/draccus-run-failure.XXXXXX")"
+  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/draccus-cli-run-failure.XXXXXX")"
   project="$tmpdir/project"
   mkdir -p "$project"
   cat >"$project/draccus.yaml" <<EOF
@@ -183,7 +221,7 @@ EOF
 _draccus_run_parallel_same_name_records_ok() {
   local tmpdir project expected=8 i status=0 run_json result_json ok=1
   local -a pids=() run_jsons=() result_jsons=()
-  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/draccus-run-parallel.XXXXXX")"
+  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/draccus-cli-run-parallel.XXXXXX")"
   project="$tmpdir/project"
   mkdir -p "$project" "$tmpdir/bin" "$tmpdir/rootfs/bin"
   touch "$tmpdir/rootfs/bin/sh"
@@ -312,14 +350,6 @@ echo "=== CHECK 1: Shell lint (shellcheck) ==="
 
 SHELL_FILES=(
   "$DRACCUS_BUNDLE/bin/draccus"
-  "$DRACCUS_BUNDLE/bin/draccus-build"
-  "$DRACCUS_BUNDLE/bin/draccus-offline"
-  "$DRACCUS_BUNDLE/bin/draccus-probe"
-  "$DRACCUS_BUNDLE/bin/draccus-project-init"
-  "$DRACCUS_BUNDLE/bin/draccus-run"
-  "$DRACCUS_BUNDLE/bin/draccus-shell"
-  "$DRACCUS_BUNDLE/bin/draccus-debug-shell"
-  "$DRACCUS_BUNDLE/bin/draccus-uv"
   "$DRACCUS_BUNDLE/host-bin/nvidia-smi"
   "$DRACCUS_BUNDLE/lib/draccus-cli.sh"
   "$DRACCUS_BUNDLE/lib/draccus-doctor.sh"
@@ -512,21 +542,8 @@ echo ""
 
 echo "=== CHECK 8: Launcher executability ==="
 
-LAUNCHERS=(
-  "$DRACCUS_BUNDLE/bin/draccus"
-  "$DRACCUS_BUNDLE/bin/draccus-run"
-  "$DRACCUS_BUNDLE/bin/draccus-build"
-  "$DRACCUS_BUNDLE/bin/draccus-offline"
-  "$DRACCUS_BUNDLE/bin/draccus-project-init"
-  "$DRACCUS_BUNDLE/bin/draccus-shell"
-  "$DRACCUS_BUNDLE/bin/draccus-debug-shell"
-  "$DRACCUS_BUNDLE/bin/draccus-probe"
-  "$DRACCUS_BUNDLE/bin/draccus-uv"
-)
-
-for launcher in "${LAUNCHERS[@]}"; do
-  check "executable: $(basename "$launcher")" "test -x \"$launcher\""
-done
+check "no legacy public entrypoints" "_draccus_no_legacy_public_entrypoints"
+check "executable: draccus" "test -x \"$DRACCUS_BUNDLE/bin/draccus\""
 
 echo ""
 
@@ -564,6 +581,13 @@ check "shims/pip executable" "test -x \"$DRACCUS_BUNDLE/shims/pip\""
 check "shims/pip3 present" "test -e \"$DRACCUS_BUNDLE/shims/pip3\""
 check "shims/pip contains sentinel" "grep -Fq 'pip is disabled inside draccus' \"$DRACCUS_BUNDLE/shims/pip\""
 check "shims/pip3 contains sentinel" "grep -Fq 'pip is disabled inside draccus' \"$DRACCUS_BUNDLE/shims/pip3\""
+check "shims/pip directs users to draccus uv pip" "grep -Fq 'draccus uv pip <args>' \"$DRACCUS_BUNDLE/shims/pip\" && grep -Fq 'draccus uv pip <args>' \"$DRACCUS_BUNDLE/shims/pip3\""
+check "active docs/config have no legacy public command refs" "_draccus_no_stale_active_public_refs"
+check "pre-commit shell hooks include bin/draccus" "grep -Fq 'bin/draccus$' \"$DRACCUS_BUNDLE/.pre-commit-config.yaml\""
+check "pre-commit shell hooks do not target legacy draccus wildcard" "! grep -Fq 'bin/draccus-' \"$DRACCUS_BUNDLE/.pre-commit-config.yaml\""
+check "mise project tasks document explicit project selection" "grep -Fq 'DRACCUS_PROJECT' \"$DRACCUS_BUNDLE/mise.toml\" && grep -Fq 'draccus.yaml' \"$DRACCUS_BUNDLE/mise.toml\""
+check "mise validate avoids unmounted /opt/draccus scripts" "! grep -Fq '/opt/draccus/scripts/validate_foundation.py' \"$DRACCUS_BUNDLE/mise.toml\""
+check "validate-all calls the defined mise validation task" "! grep -Fq 'mise run draccus-validate' \"$DRACCUS_BUNDLE/scripts/validate-all.sh\""
 DRACCUS_RUNTIME_LIB="$DRACCUS_BUNDLE/lib/draccus-runtime.sh"
 DRACCUS_LAYOUT_LIB="$DRACCUS_BUNDLE/lib/draccus-layout.sh"
 DRACCUS_PROJECT_LIB="$DRACCUS_BUNDLE/lib/draccus-project.sh"
@@ -577,52 +601,39 @@ check "draccus-project reports missing config guidance" "grep -qF 'draccus: erro
 check "draccus-project validates parsed DO_NOT_SHADOW sentinels" "grep -qF 'failed to parse DO_NOT_SHADOW' \"$DRACCUS_PROJECT_LIB\" && grep -qF 'missing sentinel' \"$DRACCUS_PROJECT_LIB\""
 check "draccus-project refuses mismatched existing config name" "grep -qF 'existing draccus.yaml has name' \"$DRACCUS_PROJECT_LIB\""
 check "draccus-project preserves existing pyproject metadata" "grep -qF 'created_pyproject=1' \"$DRACCUS_PROJECT_LIB\" && grep -qF 'update_pyproject=\"\$1\"' \"$DRACCUS_PROJECT_LIB\""
-check "draccus-run delegates to runtime library" "grep -qF 'draccus_runtime_exec_run \"\$@\"' \"$DRACCUS_BUNDLE/bin/draccus-run\""
-check "draccus-build delegates to runtime library" "grep -qF 'draccus_runtime_exec_build \"\$@\"' \"$DRACCUS_BUNDLE/bin/draccus-build\""
 check "draccus CLI dispatches build through runtime library" "grep -qF 'draccus_runtime_exec_build \"\$@\"' \"$DRACCUS_BUNDLE/lib/draccus-cli.sh\""
 check "draccus CLI dispatches run through run-record library" "grep -qF 'draccus_run_main \"\$@\"' \"$DRACCUS_BUNDLE/lib/draccus-cli.sh\""
 check "draccus-run-record library exists" "test -f \"$DRACCUS_BUNDLE/lib/draccus-run-record.sh\""
-check "draccus-run ro-binds bundle shims to /opt/draccus/shims" "_draccus_run_binds_shims"
-check "draccus-run ro-binds host-bin to /opt/draccus/host-bin" "grep -qF -- '--ro-bind \"\$DRACCUS_BUNDLE/host-bin\" /opt/draccus/host-bin' \"$DRACCUS_RUNTIME_LIB\""
-check "draccus-run PATH leads with /opt/draccus/shims" "grep -qF 'draccus_path_views=\"/opt/draccus/shims:' \"$DRACCUS_RUNTIME_LIB\""
-check "draccus-run PATH includes host-bin" "grep -qF '/opt/draccus/host-bin' \"$DRACCUS_RUNTIME_LIB\""
-check "draccus-run PATH includes spack bin" "grep -qF '/opt/draccus/spack/bin' \"$DRACCUS_RUNTIME_LIB\""
-check "draccus-run PATH includes starship cache bin" "grep -qF '/opt/draccus/cache/starship/bin' \"$DRACCUS_RUNTIME_LIB\""
+check "runtime run mode ro-binds bundle shims to /opt/draccus/shims" "_draccus_run_binds_shims"
+check "runtime run mode ro-binds host-bin to /opt/draccus/host-bin" "grep -qF -- '--ro-bind \"\$DRACCUS_BUNDLE/host-bin\" /opt/draccus/host-bin' \"$DRACCUS_RUNTIME_LIB\""
+check "runtime run mode PATH leads with /opt/draccus/shims" "grep -qF 'draccus_path_views=\"/opt/draccus/shims:' \"$DRACCUS_RUNTIME_LIB\""
+check "runtime run mode PATH includes host-bin" "grep -qF '/opt/draccus/host-bin' \"$DRACCUS_RUNTIME_LIB\""
+check "runtime run mode PATH includes spack bin" "grep -qF '/opt/draccus/spack/bin' \"$DRACCUS_RUNTIME_LIB\""
+check "runtime run mode PATH includes starship cache bin" "grep -qF '/opt/draccus/cache/starship/bin' \"$DRACCUS_RUNTIME_LIB\""
 check "draccus shell sources Spack setup" "grep -qF '/opt/draccus/spack/share/spack/setup-env.sh' \"$DRACCUS_BUNDLE/lib/draccus-shell.sh\""
-check "draccus-run disables Spack locks for readonly inspection" "grep -qF 'SPACK_USER_CONFIG_PATH /opt/draccus/cache/spack-readonly-config' \"$DRACCUS_RUNTIME_LIB\""
-check "draccus-run mirrors Spack env metadata for readonly activation" "grep -qF 'spack-readonly-envs' \"$DRACCUS_RUNTIME_LIB\""
+check "runtime run mode disables Spack locks for readonly inspection" "grep -qF 'SPACK_USER_CONFIG_PATH /opt/draccus/cache/spack-readonly-config' \"$DRACCUS_RUNTIME_LIB\""
+check "runtime run mode mirrors Spack env metadata for readonly activation" "grep -qF 'spack-readonly-envs' \"$DRACCUS_RUNTIME_LIB\""
 check "draccus shell rewrites managed env activation to readonly mirror" "grep -qF '_draccus_spack_upstream' \"$DRACCUS_BUNDLE/lib/draccus-shell.sh\""
 check "draccus shell launches zsh" "grep -qF 'zsh' \"$DRACCUS_BUNDLE/lib/draccus-shell.sh\""
 check "draccus shell configures starship" "grep -qF 'starship init zsh' \"$DRACCUS_BUNDLE/lib/draccus-shell.sh\""
 check "starship-version.env exists" "test -f \"$DRACCUS_BUNDLE/scripts/starship-version.env\""
-check "draccus-run exports base-ml PYTHONPATH" "grep -qF '/opt/draccus/view/base-ml/lib/python3.12/site-packages' \"$DRACCUS_RUNTIME_LIB\""
-check "draccus-run has no host_uv / DRACCUS_HOST_UV_BIN" "! grep -qE 'DRACCUS_HOST_UV_BIN|host_uv_' \"$DRACCUS_RUNTIME_LIB\""
+check "runtime run mode exports base-ml PYTHONPATH" "grep -qF '/opt/draccus/view/base-ml/lib/python3.12/site-packages' \"$DRACCUS_RUNTIME_LIB\""
+check "runtime has no host_uv / DRACCUS_HOST_UV_BIN" "! grep -qE 'DRACCUS_HOST_UV_BIN|host_uv_' \"$DRACCUS_RUNTIME_LIB\""
 check "host-bin/nvidia-smi fallback executable" "test -x \"$DRACCUS_BUNDLE/host-bin/nvidia-smi\""
-check "draccus-uv delegates behavior to lib/draccus-uv.sh" "grep -qF 'lib/draccus-uv.sh' \"$DRACCUS_BUNDLE/bin/draccus-uv\""
-check "draccus-uv auto-targets workspace .venv for pip installs" "grep -qF -- '--python /workspace/.venv/bin/python' \"$DRACCUS_BUNDLE/lib/draccus-uv.sh\""
-check "draccus-uv blocks direct foundation package installs" "grep -qF 'refusing to install foundation package' \"$DRACCUS_BUNDLE/lib/draccus-uv.sh\""
-check "draccus-uv audits resolved install plans" "grep -qF -- '--dry-run' \"$DRACCUS_BUNDLE/lib/draccus-uv.sh\""
+check "draccus CLI dispatches uv through uv library" "grep -qF 'draccus_uv_main \"\$@\"' \"$DRACCUS_BUNDLE/lib/draccus-cli.sh\""
+check "draccus uv auto-targets workspace .venv for pip installs" "grep -qF -- '--python /workspace/.venv/bin/python' \"$DRACCUS_BUNDLE/lib/draccus-uv.sh\""
+check "draccus uv blocks direct foundation package installs" "grep -qF 'refusing to install foundation package' \"$DRACCUS_BUNDLE/lib/draccus-uv.sh\""
+check "draccus uv audits resolved install plans" "grep -qF -- '--dry-run' \"$DRACCUS_BUNDLE/lib/draccus-uv.sh\""
 
 echo ""
 
 # ============================================================================
-# CHECK 10 - bwrap probe (optional)
+# CHECK 10 - Gate 0 runtime-boundary guard
 # ============================================================================
 
-echo "=== CHECK 10: bwrap probe (optional) ==="
+echo "=== CHECK 10: Gate 0 runtime-boundary guard ==="
 
-if command -v bwrap >/dev/null 2>&1; then
-  echo "[INFO] bwrap available, running draccus-probe..."
-  if "$DRACCUS_BUNDLE/bin/draccus-probe"; then
-    echo "[PASS] draccus-probe completed successfully"
-    pass_count=$((pass_count + 1))
-  else
-    echo "[FAIL] draccus-probe failed"
-    fail_count=$((fail_count + 1))
-  fi
-else
-  echo "[NOTE] bwrap not in PATH, skipping probe"
-fi
+check "Gate 0 does not run draccus doctor" "! grep -v 'Gate 0 does not run' \"$DRACCUS_BUNDLE/scripts/validate-static.sh\" | grep -qF '\"$DRACCUS_BUNDLE/bin/draccus\" doctor'"
 
 echo ""
 

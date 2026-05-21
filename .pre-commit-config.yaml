@@ -10,7 +10,7 @@ repos:
         language: system
         entry: shellcheck
         args: [--severity=warning]
-        files: ^(bin/draccus-|lib/draccus-.*\.sh$|scripts/.*\.sh$)
+        files: ^(bin/draccus$|host-bin/nvidia-smi$|lib/draccus-.*\.sh$|scripts/.*\.sh$|shims/pip3?$)
         types: [shell]
 
       - id: shfmt
@@ -18,7 +18,7 @@ repos:
         language: system
         entry: shfmt
         args: [-i, "2", -ci, -bn, -d]
-        files: ^(bin/draccus-|lib/draccus-.*\.sh$|scripts/.*\.sh$)
+        files: ^(bin/draccus$|host-bin/nvidia-smi$|lib/draccus-.*\.sh$|scripts/.*\.sh$|shims/pip3?$)
         types: [shell]
 
       - id: ruff
